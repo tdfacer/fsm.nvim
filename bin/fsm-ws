@@ -1,0 +1,97 @@
+#!/bin/bash
+# FSM Workspace Quick Switch - Terminal-based workspace switcher using fzf
+# Usage: fsm-ws
+
+set -euo pipefail
+
+# ANSI color codes
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+DIM='\033[2m'
+RESET='\033[0m'
+
+# Get current workspace number
+get_current_workspace() {
+    i3-msg -t get_workspaces | jq -r '.[] | select(.focused == true) | .num'
+}
+
+# Get all workspaces with focus information
+get_workspace_list() {
+    local current=$(get_current_workspace)
+    local data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/focus/foci"
+
+    # Get active focus workspaces
+    local -A focus_names
+    if [[ -d "$data_dir" ]]; then
+        for focus_dir in "$data_dir"/*; do
+            if [[ -f "$focus_dir/metadata.json" ]]; then
+                local ws_info=$(jq -r 'select(.state == "active") | "\(.workspace_name // ""):\(.name)"' "$focus_dir/metadata.json" 2>/dev/null || true)
+                if [[ -n "$ws_info" ]] && [[ "$ws_info" != ":" ]]; then
+                    IFS=':' read -r ws_name focus_name <<< "$ws_info"
+                    [[ -n "$ws_name" ]] && focus_names["$ws_name"]="$focus_name"
+                fi
+            fi
+        done
+    fi
+
+    # List all workspaces
+    i3-msg -t get_workspaces | jq -r '.[] | [.num, .name, .focused] | @tsv' | \
+    while IFS=$'\t' read -r num name focused; do
+        local prefix="  "
+        local suffix=""
+        local color=""
+
+        # Current workspace
+        if [[ "$focused" == "true" ]]; then
+            prefix="● "
+            color="$GREEN"
+        # FSM focus workspace
+        elif [[ -n "${focus_names[$name]:-}" ]]; then
+            prefix="◆ "
+            color="$YELLOW"
+            suffix=" ${DIM}(${focus_names[$name]})${RESET}"
+        fi
+
+        # Format: "● 10: FOCUS-my-project (My Project)"
+        printf "${color}%s%2s: %-25s%s${RESET}\n" "$prefix" "$num" "$name" "$suffix"
+    done
+}
+
+# Main
+main() {
+    # Check dependencies
+    if ! command -v i3-msg &> /dev/null; then
+        echo "Error: i3-msg not found. This script requires i3 window manager." >&2
+        exit 1
+    fi
+
+    if ! command -v jq &> /dev/null; then
+        echo "Error: jq not found. Please install jq." >&2
+        exit 1
+    fi
+
+    if ! command -v fzf &> /dev/null; then
+        echo "Error: fzf not found. Please install fzf." >&2
+        exit 1
+    fi
+
+    # Show workspace list and get selection
+    local selection=$(get_workspace_list | fzf \
+        --ansi \
+        --no-sort \
+        --prompt="Switch to workspace: " \
+        --header="● Current  ◆ FSM Focus  ↵ Select  ^C Cancel" \
+        --height=15 \
+        --layout=reverse)
+
+    # Extract workspace number and switch
+    if [[ -n "$selection" ]]; then
+        local ws_num=$(echo "$selection" | sed -E 's/^[●◆ ]+([0-9]+):.*/\1/')
+        if [[ -n "$ws_num" ]]; then
+            i3-msg workspace number "$ws_num" >/dev/null
+        fi
+    fi
+}
+
+main "$@"

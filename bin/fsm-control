@@ -1,0 +1,264 @@
+#!/bin/bash
+# FSM Control - Quick focus management via dmenu/rofi
+# Usage: fsm-control [dmenu|rofi]
+
+set -euo pipefail
+
+# Default to dmenu, but allow rofi as argument
+PICKER="${1:-dmenu}"
+
+# Get FSM data directory
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/focus/foci"
+
+# Colors for status indicators
+STATUS_ACTIVE="●"
+STATUS_SUSPENDED="○"
+STATUS_ARCHIVED="◌"
+
+# Get all focuses with their status
+get_focuses() {
+    if [[ ! -d "$DATA_DIR" ]]; then
+        return
+    fi
+
+    for focus_dir in "$DATA_DIR"/*; do
+        if [[ -f "$focus_dir/metadata.json" ]]; then
+            local slug=$(basename "$focus_dir")
+            local data=$(jq -r '. | "\(.state)|\(.name)|\(.workspace_name // "")"' "$focus_dir/metadata.json" 2>/dev/null || true)
+
+            if [[ -n "$data" ]]; then
+                IFS='|' read -r state name workspace <<< "$data"
+
+                # Get status indicator
+                local indicator="$STATUS_ARCHIVED"
+                case "$state" in
+                    active) indicator="$STATUS_ACTIVE" ;;
+                    suspended) indicator="$STATUS_SUSPENDED" ;;
+                esac
+
+                # Format output
+                if [[ -n "$workspace" ]]; then
+                    echo "$indicator $name [$workspace]"
+                else
+                    echo "$indicator $name"
+                fi
+            fi
+        fi
+    done | sort
+}
+
+# Get available actions
+get_actions() {
+    echo "→ Create new focus"
+    echo "→ Switch workspace"
+    echo "→ List all focuses"
+}
+
+# Show main menu
+show_main_menu() {
+    local prompt="FSM:"
+    local options=$(
+        echo "=== ACTIONS ==="
+        get_actions
+        echo ""
+        echo "=== FOCUSES ==="
+        get_focuses
+    )
+
+    case "$PICKER" in
+        rofi)
+            echo "$options" | rofi -dmenu -i -p "$prompt" \
+                -theme-str 'window {width: 40%;}' \
+                -theme-str 'listview {lines: 15;}'
+            ;;
+        dmenu)
+            echo "$options" | dmenu -i -p "$prompt" -l 15
+            ;;
+    esac
+}
+
+# Show action menu for a focus
+show_focus_menu() {
+    local focus_name="$1"
+    local prompt="Action for $focus_name:"
+
+    # Determine available actions based on focus state
+    local state_indicator="${focus_name:0:1}"
+    local actions=""
+
+    case "$state_indicator" in
+        "$STATUS_ACTIVE")
+            actions="Resume (switch to)
+Suspend
+Archive
+Open notes
+Open todo
+Add URL
+Open URLs"
+            ;;
+        "$STATUS_SUSPENDED")
+            actions="Resume
+Archive
+Open notes
+Open todo
+Add URL
+Open URLs"
+            ;;
+        "$STATUS_ARCHIVED")
+            actions="Open notes
+Open todo
+Delete permanently"
+            ;;
+    esac
+
+    case "$PICKER" in
+        rofi)
+            echo "$actions" | rofi -dmenu -i -p "$prompt" \
+                -theme-str 'window {width: 30%;}' \
+                -theme-str 'listview {lines: 10;}'
+            ;;
+        dmenu)
+            echo "$actions" | dmenu -i -p "$prompt" -l 10
+            ;;
+    esac
+}
+
+# Get slug from display name
+get_slug_from_display() {
+    local display="$1"
+    # Remove status indicator and workspace
+    local name=$(echo "$display" | sed -E 's/^[●○◌] //; s/ \[.*\]$//')
+
+    # Find matching slug
+    for focus_dir in "$DATA_DIR"/*; do
+        if [[ -f "$focus_dir/metadata.json" ]]; then
+            local check_name=$(jq -r '.name' "$focus_dir/metadata.json" 2>/dev/null || true)
+            if [[ "$check_name" == "$name" ]]; then
+                basename "$focus_dir"
+                return
+            fi
+        fi
+    done
+}
+
+# Execute FSM command in Neovim
+execute_fsm_command() {
+    local command="$1"
+    # Use the launcher neovim if available
+    nvim --server /tmp/nvim-launcher.pipe --remote-send ":$command<CR>" 2>/dev/null || \
+        notify-send "FSM" "Command sent: $command"
+}
+
+# Get user input
+get_user_input() {
+    local prompt="$1"
+    case "$PICKER" in
+        rofi)
+            rofi -dmenu -i -p "$prompt" -lines 0
+            ;;
+        dmenu)
+            echo | dmenu -p "$prompt"
+            ;;
+    esac
+}
+
+# Handle selection
+handle_selection() {
+    local selection="$1"
+
+    case "$selection" in
+        "→ Create new focus")
+            local name=$(get_user_input "Focus name:")
+            if [[ -n "$name" ]]; then
+                execute_fsm_command "FocusStart $name"
+            fi
+            ;;
+        "→ Switch workspace")
+            "$0-workspace-switch" "$PICKER"
+            ;;
+        "→ List all focuses")
+            execute_fsm_command "FocusList"
+            ;;
+        "=== ACTIONS ==="|"=== FOCUSES ==="|"")
+            # Ignore headers and empty selections
+            ;;
+        *)
+            # A focus was selected, show action menu
+            local action=$(show_focus_menu "$selection")
+            if [[ -n "$action" ]]; then
+                local slug=$(get_slug_from_display "$selection")
+                handle_focus_action "$slug" "$action"
+            fi
+            ;;
+    esac
+}
+
+# Handle focus-specific action
+handle_focus_action() {
+    local slug="$1"
+    local action="$2"
+
+    case "$action" in
+        "Resume"|"Resume (switch to)")
+            execute_fsm_command "FocusResume $slug"
+            ;;
+        "Suspend")
+            execute_fsm_command "FocusSuspend $slug"
+            ;;
+        "Archive")
+            execute_fsm_command "FocusArchive $slug"
+            ;;
+        "Open notes")
+            execute_fsm_command "FocusNotes $slug"
+            ;;
+        "Open todo")
+            execute_fsm_command "FocusTodo $slug"
+            ;;
+        "Add URL")
+            local url=$(get_user_input "URL:")
+            if [[ -n "$url" ]]; then
+                # Need to escape the URL for vim command
+                url=$(printf '%q' "$url")
+                execute_fsm_command "FocusAddUrl $url"
+            fi
+            ;;
+        "Open URLs")
+            execute_fsm_command "FocusUrls $slug"
+            ;;
+        "Delete permanently")
+            # Show confirmation in picker
+            local confirm=$(echo -e "No\nYes, delete permanently" | \
+                case "$PICKER" in
+                    rofi) rofi -dmenu -i -p "Delete $slug?" ;;
+                    dmenu) dmenu -i -p "Delete $slug?" ;;
+                esac)
+            if [[ "$confirm" == "Yes, delete permanently" ]]; then
+                execute_fsm_command "FocusDelete $slug"
+            fi
+            ;;
+    esac
+}
+
+# Main
+main() {
+    # Check dependencies
+    for cmd in i3-msg jq nvim; do
+        if ! command -v "$cmd" &> /dev/null; then
+            echo "Error: $cmd not found. Please install $cmd." >&2
+            exit 1
+        fi
+    done
+
+    if ! command -v "$PICKER" &> /dev/null; then
+        echo "Error: $PICKER not found. Please install $PICKER." >&2
+        exit 1
+    fi
+
+    # Show main menu and handle selection
+    local selection=$(show_main_menu)
+    if [[ -n "$selection" ]]; then
+        handle_selection "$selection"
+    fi
+}
+
+main "$@"

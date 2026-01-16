@@ -1,0 +1,147 @@
+#!/bin/bash
+# FSM Workspace Switcher - Quick workspace switching with focus awareness
+# Usage: fsm-workspace-switch [dmenu|rofi]
+
+set -euo pipefail
+
+# Default to dmenu, but allow rofi as argument
+PICKER="${1:-dmenu}"
+
+# Colors for dmenu
+DMENU_NORMAL="#282828"
+DMENU_SELECTED="#458588"
+DMENU_FOCUS="#98971a"  # Green for focus workspaces
+
+# Get current workspaces from i3
+get_workspaces() {
+    i3-msg -t get_workspaces | jq -r '.[] | "\(.num):\(.name)"' | sort -n
+}
+
+# Get FSM focus workspaces
+get_focus_workspaces() {
+    local data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/focus/foci"
+    if [[ ! -d "$data_dir" ]]; then
+        return
+    fi
+
+    # Read all focus metadata files
+    for focus_dir in "$data_dir"/*; do
+        if [[ -f "$focus_dir/metadata.json" ]]; then
+            # Extract workspace name if in active state
+            jq -r 'select(.state == "active") | .workspace_name // empty' "$focus_dir/metadata.json" 2>/dev/null || true
+        fi
+    done
+}
+
+# Get current workspace
+get_current_workspace() {
+    i3-msg -t get_workspaces | jq -r '.[] | select(.focused == true) | "\(.num):\(.name)"'
+}
+
+# Build workspace list with indicators
+build_workspace_list() {
+    local current=$(get_current_workspace)
+    local -A focus_workspaces
+
+    # Mark focus workspaces
+    while IFS= read -r ws; do
+        [[ -n "$ws" ]] && focus_workspaces["$ws"]=1
+    done < <(get_focus_workspaces)
+
+    # Build list with indicators
+    while IFS= read -r ws; do
+        local display="$ws"
+        local num="${ws%%:*}"
+        local name="${ws#*:}"
+
+        # Add indicators
+        if [[ "$ws" == "$current" ]]; then
+            display="● $display"  # Current workspace
+        elif [[ -n "${focus_workspaces[$name]:-}" ]]; then
+            display="◆ $display"  # FSM focus workspace
+        else
+            display="  $display"  # Regular workspace
+        fi
+
+        echo "$display"
+    done < <(get_workspaces)
+}
+
+# Show picker and get selection
+show_picker() {
+    local prompt="Workspace:"
+    local selection
+
+    case "$PICKER" in
+        rofi)
+            selection=$(build_workspace_list | rofi -dmenu -i -p "$prompt" \
+                -theme-str 'window {width: 30%;}' \
+                -theme-str 'listview {lines: 10;}' \
+                -format 'd:s')
+            # rofi returns "index:selected text", extract the text
+            selection="${selection#*:}"
+            ;;
+        dmenu)
+            selection=$(build_workspace_list | dmenu -i -p "$prompt" \
+                -nb "$DMENU_NORMAL" -nf white \
+                -sb "$DMENU_SELECTED" -sf white \
+                -l 10)
+            ;;
+        *)
+            echo "Error: Unknown picker '$PICKER'. Use 'dmenu' or 'rofi'." >&2
+            exit 1
+            ;;
+    esac
+
+    echo "$selection"
+}
+
+# Switch to selected workspace
+switch_workspace() {
+    local selection="$1"
+
+    # Remove indicator prefix if present
+    selection="${selection#[●◆] }"
+    selection="${selection#  }"
+
+    # Extract workspace number or name
+    if [[ "$selection" =~ ^[0-9]+: ]]; then
+        # Format: "10:FOCUS-my-project"
+        local ws_num="${selection%%:*}"
+        i3-msg workspace number "$ws_num" >/dev/null
+    else
+        # Just in case it's a bare name
+        i3-msg workspace "$selection" >/dev/null
+    fi
+}
+
+# Main
+main() {
+    # Check if i3-msg is available
+    if ! command -v i3-msg &> /dev/null; then
+        echo "Error: i3-msg not found. This script requires i3 window manager." >&2
+        exit 1
+    fi
+
+    # Check if jq is available
+    if ! command -v jq &> /dev/null; then
+        echo "Error: jq not found. Please install jq." >&2
+        exit 1
+    fi
+
+    # Check if picker is available
+    if ! command -v "$PICKER" &> /dev/null; then
+        echo "Error: $PICKER not found. Please install $PICKER." >&2
+        exit 1
+    fi
+
+    # Get selection
+    local selection=$(show_picker)
+
+    # Switch workspace if selection was made
+    if [[ -n "$selection" ]]; then
+        switch_workspace "$selection"
+    fi
+}
+
+main "$@"
