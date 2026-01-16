@@ -391,27 +391,30 @@ function M.save_marks(slug)
   return utils.write_file(path, content)
 end
 
---- Get browsers on current workspace
+--- Get browsers on a workspace
+---@param workspace_name? string Workspace name (defaults to focused workspace)
 ---@return table[] Browser containers
-function M.get_browsers_on_workspace()
-  local workspaces, err = M.get_workspaces()
-  if not workspaces then
-    return {}
-  end
+function M.get_browsers_on_workspace(workspace_name)
+  if not workspace_name then
+    -- Fall back to focused workspace
+    local workspaces, err = M.get_workspaces()
+    if not workspaces then
+      return {}
+    end
 
-  local current_ws = nil
-  for _, ws in ipairs(workspaces) do
-    if ws.focused then
-      current_ws = ws.name
-      break
+    for _, ws in ipairs(workspaces) do
+      if ws.focused then
+        workspace_name = ws.name
+        break
+      end
+    end
+
+    if not workspace_name then
+      return {}
     end
   end
 
-  if not current_ws then
-    return {}
-  end
-
-  local containers = M.find_on_workspace(current_ws)
+  local containers = M.find_on_workspace(workspace_name)
   local browsers = {}
 
   for _, container in ipairs(containers) do

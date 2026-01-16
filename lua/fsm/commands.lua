@@ -127,9 +127,9 @@ function M.suspend(slug)
     -- Save marks
     i3.save_marks(slug)
 
-    -- Get browsers to park
-    if cfg.suspend_policy.browsers == "park" then
-      local browsers = i3.get_browsers_on_workspace()
+    -- Get browsers to park from the focus's workspace
+    if cfg.suspend_policy.browsers == "park" and focus.workspace_name then
+      local browsers = i3.get_browsers_on_workspace(focus.workspace_name)
       if #browsers > 0 then
         parked_ids = i3.park_windows(browsers)
         log.debug("Parked %d browser windows", #parked_ids)
