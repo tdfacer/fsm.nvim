@@ -13,12 +13,24 @@ function M.available()
 end
 
 --- Run i3-msg command and return parsed JSON
----@param args string
+---@param args string|string[]
 ---@return any? result
 ---@return string? error
 local function i3_msg(args)
-  local cmd = "i3-msg " .. args
-  log.debug("Running: %s", cmd)
+  local cmd
+  if type(args) == "table" then
+    -- Already a list of arguments
+    cmd = vim.list_extend({ "i3-msg" }, args)
+  elseif args:match("^%-t ") then
+    -- Type query like "-t get_workspaces" - split into separate args
+    local flag, msg_type = args:match("^(%-t)%s+(.+)$")
+    cmd = { "i3-msg", flag, msg_type }
+  else
+    -- Command string - pass as single argument to avoid shell interpretation
+    cmd = { "i3-msg", args }
+  end
+
+  log.debug("Running: i3-msg %s", type(args) == "table" and table.concat(args, " ") or args)
   local result = vim.fn.system(cmd)
 
   if vim.v.shell_error ~= 0 then
