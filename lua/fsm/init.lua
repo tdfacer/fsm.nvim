@@ -54,6 +54,15 @@ function M.archive(slug)
   return commands.archive(slug)
 end
 
+--- Delete a focus permanently
+---@param slug string Focus slug
+---@param opts? { force: boolean }
+---@return boolean ok
+---@return string? error
+function M.delete(slug, opts)
+  return commands.delete(slug, opts)
+end
+
 --- List all focuses
 ---@param opts? { state: FocusState? }
 ---@return FocusMeta[]

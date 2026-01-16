@@ -52,6 +52,7 @@ Run `:checkhealth fsm` to verify your setup.
     { "<leader>Fn", "<cmd>FocusNotes<cr>", desc = "Open focus notes" },
     { "<leader>Ft", "<cmd>FocusTodo<cr>", desc = "Open focus todo" },
     { "<leader>Fa", "<cmd>FocusArchive<cr>", desc = "Archive focus" },
+    { "<leader>Fd", "<cmd>FocusDelete<cr>", desc = "Delete archived focus" },
   },
 }
 ```
@@ -98,7 +99,7 @@ require("fsm").setup({
 
   -- Notes configuration
   notes = {
-    auto_open = true,  -- Open notes.md on FocusStart
+    auto_open = true,  -- Start nvim with notes.md in tmux session
   },
 
   -- Environment variable patterns to redact from saved state
@@ -111,21 +112,24 @@ require("fsm").setup({
 
 ## Commands
 
+All commands that require a focus will show a picker if called without arguments.
+
 | Command | Description |
 |---------|-------------|
-| `:FocusStart <name>` | Create focus, allocate workspace, launch terminal, open notes |
+| `:FocusStart [name]` | Create focus, allocate workspace, launch terminal with nvim+notes |
 | `:FocusSuspend [slug]` | Save state, park browser windows (defaults to current focus) |
-| `:FocusResume <slug>` | Restore workspace, unpark windows, load session |
-| `:FocusSwitch` | Telescope picker to suspend current + resume selected |
+| `:FocusResume [slug]` | Restore workspace, unpark windows, load session (picker if no arg) |
+| `:FocusSwitch` | Picker to suspend current + resume selected |
 | `:FocusList` | List all focuses with state indicators |
 | `:FocusStatus` | Show current focus details and driver availability |
-| `:FocusArchive <slug>` | Mark focus as archived (read-only) |
+| `:FocusArchive [slug]` | Archive focus, kill tmux session (picker if no arg) |
+| `:FocusDelete [slug]` | Permanently delete archived focus (picker if no arg) |
 | `:FocusNotes [slug]` | Open notes.md for focus |
 | `:FocusTodo [slug]` | Open todo.md for focus |
 
 ## Keymaps
 
-Recommended keymaps using `<leader>F` prefix:
+Recommended keymaps using `<leader>F` prefix. All commands work without arguments - they'll prompt or show a picker as needed.
 
 ```lua
 local opts = { noremap = true, silent = true }
@@ -144,8 +148,9 @@ vim.keymap.set("n", "<leader>Fi", "<cmd>FocusStatus<cr>", vim.tbl_extend("force"
 vim.keymap.set("n", "<leader>Fn", "<cmd>FocusNotes<cr>", vim.tbl_extend("force", opts, { desc = "Focus notes" }))
 vim.keymap.set("n", "<leader>Ft", "<cmd>FocusTodo<cr>", vim.tbl_extend("force", opts, { desc = "Focus todo" }))
 
--- Archive (less common)
+-- Lifecycle
 vim.keymap.set("n", "<leader>Fa", "<cmd>FocusArchive<cr>", vim.tbl_extend("force", opts, { desc = "Archive focus" }))
+vim.keymap.set("n", "<leader>Fd", "<cmd>FocusDelete<cr>", vim.tbl_extend("force", opts, { desc = "Delete focus" }))
 ```
 
 ### which-key.nvim
@@ -163,6 +168,7 @@ require("which-key").register({
     n = { "<cmd>FocusNotes<cr>", "Focus notes" },
     t = { "<cmd>FocusTodo<cr>", "Focus todo" },
     a = { "<cmd>FocusArchive<cr>", "Archive focus" },
+    d = { "<cmd>FocusDelete<cr>", "Delete focus" },
   },
 })
 ```
@@ -219,13 +225,18 @@ fsm.resume("my-focus")
 -- Switch (suspend current + resume target)
 fsm.switch("other-focus")
 
--- Archive a focus
+-- Archive a focus (also kills tmux session)
 fsm.archive("old-focus")
+
+-- Delete a focus permanently (must be archived first)
+fsm.delete("old-focus")
+fsm.delete("active-focus", { force = true })  -- skip archive check
 
 -- List focuses
 fsm.list()                        -- all
 fsm.list({ state = "active" })    -- filtered
 fsm.list({ state = "suspended" })
+fsm.list({ state = "archived" })
 
 -- Get current focus
 fsm.current()        -- returns slug or nil
@@ -234,7 +245,7 @@ fsm.current_focus()  -- returns full metadata or nil
 -- Status info
 fsm.status()  -- { has_focus, focus, i3_available, tmux_available, ... }
 
--- Focus files
+-- Focus files (works on archived focuses too)
 fsm.notes("my-focus")
 fsm.todo("my-focus")
 
@@ -258,6 +269,45 @@ Focus data is stored at `~/.local/share/focus/foci/<slug>/`:
 └── todo.md           # Focus todos
 ```
 
+## Focus Lifecycle
+
+```
+  ┌─────────┐
+  │  Start  │  :FocusStart "name"
+  └────┬────┘
+       │
+       ▼
+  ┌─────────┐     :FocusSuspend
+  │ Active  │◄─────────────────┐
+  └────┬────┘                  │
+       │                       │
+       │ :FocusSuspend         │ :FocusResume
+       ▼                       │
+  ┌─────────┐                  │
+  │Suspended│──────────────────┘
+  └────┬────┘
+       │
+       │ :FocusArchive
+       ▼
+  ┌─────────┐
+  │Archived │  tmux session killed, notes still readable
+  └────┬────┘
+       │
+       │ :FocusDelete
+       ▼
+     (gone)   data directory removed
+```
+
+### Archived Focuses
+
+When you archive a focus:
+- The tmux session is **killed** (no more terminal)
+- The workspace number is **freed** for reuse
+- Notes and todos are **preserved** and still readable via `:FocusNotes`/`:FocusTodo`
+- The focus **cannot be resumed**
+
+Archived focuses are kept for reference. When you're done with them, use `:FocusDelete` to permanently remove the data.
+
 ## Workflow Example
 
 ```
@@ -267,7 +317,7 @@ Focus data is stored at `~/.local/share/focus/foci/<slug>/`:
 # You now have:
 # - Workspace 10:FOCUS-rds-outage-investigation
 # - tmux session focus/rds-outage-investigation
-# - notes.md open in Neovim
+# - Neovim open with notes.md in the tmux session
 # - Alacritty terminal attached to tmux
 
 # Open relevant URLs, work on the issue...
@@ -289,6 +339,11 @@ Focus data is stored at `~/.local/share/focus/foci/<slug>/`:
 
 # Done with the incident
 :FocusArchive rds-outage-investigation
+# tmux session killed, notes preserved
+
+# Later, clean up old focuses
+:FocusDelete
+# Picker shows archived focuses, select to delete
 ```
 
 ## Focus States
@@ -297,15 +352,40 @@ Focus data is stored at `~/.local/share/focus/foci/<slug>/`:
 |-------|------|-------------|
 | `active` | ● | Currently active, has allocated workspace |
 | `suspended` | ○ | Saved state, windows parked, can resume |
-| `archived` | ◌ | Read-only, workspace freed, kept for reference |
+| `archived` | ◌ | Read-only, workspace freed, notes preserved |
+
+## tmux Configuration
+
+### Session Name Truncation
+
+By default, tmux may truncate long session names in the status bar. Add to your `~/.tmux.conf`:
+
+```tmux
+# Show full session name (adjust width as needed)
+set -g status-left-length 40
+set -g status-left '[#{session_name}] '
+```
+
+### Shorter Session Names
+
+Alternatively, use a shorter prefix in your FSM config:
+
+```lua
+require("fsm").setup({
+  tmux = {
+    session_prefix = "f/",  -- "f/my-focus" instead of "focus/my-focus"
+  },
+})
+```
 
 ## Tips
 
 - **Naming**: Use descriptive names like "incident-rds-outage" or "feature-user-auth" - they become slugs and tmux session names
-- **URLs**: Add canonical URLs to `urls.txt` for quick reference; they'll open on resume (future feature)
+- **URLs**: Add canonical URLs to `urls.txt` for quick reference
 - **Notes**: Use `notes.md` for context that helps you resume - what you were doing, next steps
 - **Workspaces**: Keep workspaces 1-9 for non-focus work; FSM uses 10-19 by default
 - **Parking**: Workspace 99 holds parked browser windows - don't put other stuff there
+- **Cleanup**: Periodically run `:FocusDelete` to clean up old archived focuses
 
 ## Health Check
 

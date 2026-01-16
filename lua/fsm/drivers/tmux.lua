@@ -35,15 +35,20 @@ end
 --- Create a new tmux session
 ---@param name string Session name
 ---@param cwd? string Working directory
+---@param initial_cmd? string Initial command to run in session
 ---@return boolean ok
 ---@return string? error
-function M.create_session(name, cwd)
-  local cmd = "tmux new-session -d -s " .. vim.fn.shellescape(name)
+function M.create_session(name, cwd, initial_cmd)
+  local cmd = { "tmux", "new-session", "-d", "-s", name }
   if cwd then
-    cmd = cmd .. " -c " .. vim.fn.shellescape(cwd)
+    table.insert(cmd, "-c")
+    table.insert(cmd, cwd)
+  end
+  if initial_cmd then
+    table.insert(cmd, initial_cmd)
   end
 
-  log.debug("Running: %s", cmd)
+  log.debug("Running: tmux new-session -d -s %s", name)
   vim.fn.system(cmd)
 
   if vim.v.shell_error ~= 0 then
@@ -109,15 +114,16 @@ end
 --- Get the shell command to launch a terminal with tmux
 ---@param slug string Focus slug
 ---@param cwd? string Working directory
+---@param initial_cmd? string Initial command to run in tmux session
 ---@return string
-function M.get_terminal_command(slug, cwd)
+function M.get_terminal_command(slug, cwd, initial_cmd)
   local cfg = config.get()
   local session = M.session_name(slug)
   local attach_cmd = M.get_attach_command(session)
 
   -- If session doesn't exist, create it first
   if not M.session_exists(session) then
-    M.create_session(session, cwd)
+    M.create_session(session, cwd, initial_cmd)
   end
 
   -- Format terminal command: terminal_template expects (class, command)
@@ -127,9 +133,10 @@ end
 --- Ensure session exists for a focus
 ---@param slug string Focus slug
 ---@param cwd? string Working directory
+---@param initial_cmd? string Initial command to run if creating new session
 ---@return boolean ok
 ---@return string? error
-function M.ensure_session(slug, cwd)
+function M.ensure_session(slug, cwd, initial_cmd)
   local cfg = config.get()
   if not cfg.tmux.enabled then
     return true, nil
@@ -145,7 +152,7 @@ function M.ensure_session(slug, cwd)
     return true, nil
   end
 
-  return M.create_session(session, cwd)
+  return M.create_session(session, cwd, initial_cmd)
 end
 
 --- Send keys to a tmux session

@@ -8,11 +8,19 @@ local function create_commands()
   local store = require("fsm.store")
   local utils = require("fsm.utils")
 
-  -- :FocusStart <name>
+  -- :FocusStart [name]
   vim.api.nvim_create_user_command("FocusStart", function(opts)
     local name = opts.args
     if name == "" then
-      vim.notify("[FSM] Focus name required", vim.log.levels.ERROR)
+      -- Prompt for name if not provided
+      vim.ui.input({ prompt = "Focus name: " }, function(input)
+        if input and input ~= "" then
+          local ok, err = fsm.start(input)
+          if not ok then
+            vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+          end
+        end
+      end)
       return
     end
     local ok, err = fsm.start(name)
@@ -20,7 +28,7 @@ local function create_commands()
       vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
     end
   end, {
-    nargs = 1,
+    nargs = "?",
     desc = "Start a new focus",
     complete = function()
       return {}
@@ -47,11 +55,20 @@ local function create_commands()
     end,
   })
 
-  -- :FocusResume <name>
+  -- :FocusResume [name]
   vim.api.nvim_create_user_command("FocusResume", function(opts)
     local slug = opts.args
     if slug == "" then
-      vim.notify("[FSM] Focus slug required", vim.log.levels.ERROR)
+      -- Use picker if no argument
+      local picker = require("fsm.ui.picker")
+      picker.pick_focus(function(focus)
+        if focus then
+          local ok, err = fsm.resume(focus.slug)
+          if not ok then
+            vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+          end
+        end
+      end, { filter_state = "suspended" })
       return
     end
     local ok, err = fsm.resume(slug)
@@ -59,7 +76,7 @@ local function create_commands()
       vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
     end
   end, {
-    nargs = 1,
+    nargs = "?",
     desc = "Resume a suspended focus",
     complete = function()
       local focuses = store.suspended()
@@ -75,11 +92,20 @@ local function create_commands()
     end,
   })
 
-  -- :FocusArchive <name>
+  -- :FocusArchive [name]
   vim.api.nvim_create_user_command("FocusArchive", function(opts)
     local slug = opts.args
     if slug == "" then
-      vim.notify("[FSM] Focus slug required", vim.log.levels.ERROR)
+      -- Use picker if no argument
+      local picker = require("fsm.ui.picker")
+      picker.pick_focus(function(focus)
+        if focus then
+          local ok, err = fsm.archive(focus.slug)
+          if not ok then
+            vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+          end
+        end
+      end, { include_archived = false })
       return
     end
     local ok, err = fsm.archive(slug)
@@ -87,7 +113,7 @@ local function create_commands()
       vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
     end
   end, {
-    nargs = 1,
+    nargs = "?",
     desc = "Archive a focus",
     complete = function()
       local focuses = store.list_all()
@@ -96,6 +122,52 @@ local function create_commands()
         if f.state ~= "archived" then
           table.insert(slugs, f.slug)
         end
+      end
+      return slugs
+    end,
+  })
+
+  -- :FocusDelete [name]
+  vim.api.nvim_create_user_command("FocusDelete", function(opts)
+    local slug = opts.args
+    if slug == "" then
+      -- Use picker if no argument (only show archived)
+      local picker = require("fsm.ui.picker")
+      picker.pick_focus(function(focus)
+        if focus then
+          vim.ui.select({ "Yes", "No" }, {
+            prompt = string.format("Delete focus '%s' permanently? ", focus.name),
+          }, function(choice)
+            if choice == "Yes" then
+              local ok, err = fsm.delete(focus.slug)
+              if not ok then
+                vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+              end
+            end
+          end)
+        end
+      end, { filter_state = "archived", include_archived = true })
+      return
+    end
+    -- Confirm deletion
+    vim.ui.select({ "Yes", "No" }, {
+      prompt = string.format("Delete focus '%s' permanently? ", slug),
+    }, function(choice)
+      if choice == "Yes" then
+        local ok, err = fsm.delete(slug)
+        if not ok then
+          vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+        end
+      end
+    end)
+  end, {
+    nargs = "?",
+    desc = "Delete a focus permanently",
+    complete = function()
+      local focuses = store.by_state("archived")
+      local slugs = {}
+      for _, f in ipairs(focuses) do
+        table.insert(slugs, f.slug)
       end
       return slugs
     end,
@@ -162,6 +234,19 @@ local function create_commands()
   -- :FocusNotes [name]
   vim.api.nvim_create_user_command("FocusNotes", function(opts)
     local slug = opts.args ~= "" and utils.slugify(opts.args) or nil
+    -- If no slug provided and no current focus, show picker
+    if not slug and not fsm.current() then
+      local picker = require("fsm.ui.picker")
+      picker.pick_focus(function(focus)
+        if focus then
+          local ok, err = fsm.notes(focus.slug)
+          if not ok then
+            vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+          end
+        end
+      end, { include_archived = true })
+      return
+    end
     local ok, err = fsm.notes(slug)
     if not ok then
       vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
@@ -182,6 +267,19 @@ local function create_commands()
   -- :FocusTodo [name]
   vim.api.nvim_create_user_command("FocusTodo", function(opts)
     local slug = opts.args ~= "" and utils.slugify(opts.args) or nil
+    -- If no slug provided and no current focus, show picker
+    if not slug and not fsm.current() then
+      local picker = require("fsm.ui.picker")
+      picker.pick_focus(function(focus)
+        if focus then
+          local ok, err = fsm.todo(focus.slug)
+          if not ok then
+            vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+          end
+        end
+      end, { include_archived = true })
+      return
+    end
     local ok, err = fsm.todo(slug)
     if not ok then
       vim.notify("[FSM] " .. err, vim.log.levels.ERROR)

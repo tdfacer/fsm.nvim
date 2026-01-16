@@ -46,10 +46,17 @@ function M.start(name, opts)
     i3.rename_workspace(focus.workspace_name)
   end
 
-  -- Ensure tmux session exists
+  -- Determine initial command for tmux (nvim with notes if auto_open)
   local cfg = config.get()
+  local initial_cmd = nil
+  if cfg.notes.auto_open then
+    local notes_path = store.notes_path(focus.slug)
+    initial_cmd = string.format("nvim %s", vim.fn.shellescape(notes_path))
+  end
+
+  -- Ensure tmux session exists and launch terminal
   if cfg.tmux.enabled and tmux.available() then
-    local ok, tmux_err = tmux.ensure_session(focus.slug, focus.cwd)
+    local ok, tmux_err = tmux.ensure_session(focus.slug, focus.cwd, initial_cmd)
     if ok then
       focus.tmux_session = tmux.session_name(focus.slug)
       store.save(focus)
@@ -58,7 +65,7 @@ function M.start(name, opts)
     end
 
     -- Launch terminal with tmux
-    local terminal_cmd = tmux.get_terminal_command(focus.slug, focus.cwd)
+    local terminal_cmd = tmux.get_terminal_command(focus.slug, focus.cwd, initial_cmd)
     log.debug("Launching terminal: %s", terminal_cmd)
     vim.fn.jobstart(terminal_cmd, { detach = true })
   end
@@ -71,13 +78,8 @@ function M.start(name, opts)
     end
   end
 
-  -- Set nvim context
+  -- Set nvim context (for statusline in launcher nvim)
   nvim.set_focus_context(focus)
-
-  -- Auto-open notes if configured
-  if cfg.notes.auto_open then
-    nvim.open_focus_files(focus.slug, { notes = true, todo = false })
-  end
 
   -- Mark windows after a delay (let terminal spawn)
   if i3.available() then
@@ -260,6 +262,20 @@ function M.archive(slug)
     end
   end
 
+  -- Kill tmux session if it exists
+  local cfg = config.get()
+  if cfg.tmux.enabled and tmux.available() then
+    local session = tmux.session_name(slug)
+    if tmux.session_exists(session) then
+      local ok, err = tmux.kill_session(session)
+      if ok then
+        log.debug("Killed tmux session: %s", session)
+      else
+        log.warn("Failed to kill tmux session: %s", err)
+      end
+    end
+  end
+
   local ok, err = store.archive(slug)
   if not ok then
     return false, err
@@ -272,6 +288,53 @@ function M.archive(slug)
   end
 
   log.info("Focus archived: %s", slug)
+  return true, nil
+end
+
+--- Delete a focus permanently
+---@param slug string Focus slug
+---@param opts? { force: boolean }
+---@return boolean ok
+---@return string? error
+function M.delete(slug, opts)
+  opts = opts or {}
+  if not slug then
+    return false, "Focus slug required"
+  end
+
+  local focus = store.load(slug)
+  if not focus then
+    return false, "Focus not found: " .. slug
+  end
+
+  -- Require archived state unless force is specified
+  if focus.state ~= "archived" and not opts.force then
+    return false, "Focus must be archived before deletion. Use :FocusArchive first, or pass { force = true }"
+  end
+
+  log.info("Deleting focus: %s", slug)
+
+  -- Kill tmux session if it exists
+  local cfg = config.get()
+  if cfg.tmux.enabled and tmux.available() then
+    local session = tmux.session_name(slug)
+    if tmux.session_exists(session) then
+      tmux.kill_session(session)
+    end
+  end
+
+  -- Clear current if this was current
+  if state.current_slug() == slug then
+    state.set_current(nil)
+    nvim.clear_focus_context()
+  end
+
+  local ok, err = store.delete(slug)
+  if not ok then
+    return false, err
+  end
+
+  log.info("Focus deleted: %s", slug)
   return true, nil
 end
 
