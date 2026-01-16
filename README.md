@@ -90,7 +90,7 @@ require("fsm").setup({
   -- %s placeholders: terminal gets (slug, tmux_cmd), browser gets (urls)
   apps = {
     terminal = 'alacritty --class "focus-%s,Alacritty" -e %s',
-    browser = "firefox %s",
+    browser = "firefox --new-window %s",  -- --new-window ensures proper workspace placement
   },
 
   -- tmux configuration
@@ -416,6 +416,34 @@ Run `:checkhealth fsm` to verify:
 - Browser (firefox) availability
 - Data directory status
 - Optional dependencies (telescope)
+
+## Troubleshooting
+
+### Browser Opens in Wrong Window
+
+By default, FSM uses `firefox --new-window` to ensure URLs open in a new window on the correct workspace. If you're still experiencing issues or want different behavior:
+
+```lua
+require("fsm").setup({
+  apps = {
+    -- Force new window (default)
+    browser = "firefox --new-window %s",
+
+    -- Or open in new tab of existing window
+    browser = "firefox --new-tab %s",
+
+    -- Or use a specific profile
+    browser = "firefox --new-window --profile work %s",
+  },
+})
+```
+
+### Focus Picker Not Working
+
+If keyboard shortcuts like `<leader>fs` (suspend) aren't showing the picker, ensure you're not passing an argument. The picker only appears when no argument is provided:
+
+- `:FocusSuspend` - Shows picker
+- `:FocusSuspend my-focus` - Suspends specific focus directly
 
 ## License
 

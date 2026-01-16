@@ -12,7 +12,7 @@ local defaults = {
   },
   apps = {
     terminal = 'alacritty --class "focus-%s,Alacritty" -e %s',
-    browser = "firefox %s",
+    browser = "firefox --new-window %s",
   },
   tmux = {
     enabled = true,

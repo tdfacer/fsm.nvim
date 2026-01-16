@@ -37,7 +37,20 @@ local function create_commands()
 
   -- :FocusSuspend [name]
   vim.api.nvim_create_user_command("FocusSuspend", function(opts)
-    local slug = opts.args ~= "" and opts.args or nil
+    local slug = opts.args
+    if slug == "" then
+      -- Use picker if no argument
+      local picker = require("fsm.ui.picker")
+      picker.pick_focus(function(focus)
+        if focus then
+          local ok, err = fsm.suspend(focus.slug)
+          if not ok then
+            vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+          end
+        end
+      end, { filter_state = "active" })
+      return
+    end
     local ok, err = fsm.suspend(slug)
     if not ok then
       vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
@@ -330,31 +343,53 @@ local function create_commands()
     end,
   })
 
-  -- :FocusAddUrl <url>
+  -- :FocusAddUrl [url]
   vim.api.nvim_create_user_command("FocusAddUrl", function(opts)
-    local url = opts.args
-    if url == "" then
+    local url = opts.args ~= "" and opts.args or nil
+
+    -- Helper to add URL once we have both url and slug
+    local function do_add_url(target_url, slug)
+      local ok, err = fsm.add_url(target_url, slug)
+      if not ok then
+        vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+      else
+        vim.notify("[FSM] URL added", vim.log.levels.INFO)
+      end
+    end
+
+    -- Helper to prompt for URL then add
+    local function prompt_and_add(slug)
       vim.ui.input({ prompt = "URL: " }, function(input)
         if input and input ~= "" then
-          local ok, err = fsm.add_url(input)
-          if not ok then
-            vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
-          else
-            vim.notify("[FSM] URL added", vim.log.levels.INFO)
-          end
+          do_add_url(input, slug)
         end
       end)
+    end
+
+    -- If no current focus, show picker first
+    if not fsm.current() then
+      local picker = require("fsm.ui.picker")
+      picker.pick_focus(function(focus)
+        if focus then
+          if url then
+            do_add_url(url, focus.slug)
+          else
+            prompt_and_add(focus.slug)
+          end
+        end
+      end, { include_archived = false })
       return
     end
-    local ok, err = fsm.add_url(url)
-    if not ok then
-      vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+
+    -- Have current focus
+    if url then
+      do_add_url(url, nil)
     else
-      vim.notify("[FSM] URL added", vim.log.levels.INFO)
+      prompt_and_add(nil)
     end
   end, {
     nargs = "?",
-    desc = "Add URL to current focus",
+    desc = "Add URL to focus",
   })
 
   -- :FocusListUrls [slug]
