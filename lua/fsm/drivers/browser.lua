@@ -22,25 +22,22 @@ function M.open_urls(urls, class)
 
   local cfg = config.get()
 
-  -- Build URL string
-  local url_str = table.concat(urls, " ")
+  -- Quote each URL to handle special characters
+  local quoted_urls = {}
+  for _, url in ipairs(urls) do
+    table.insert(quoted_urls, vim.fn.shellescape(url))
+  end
+  local url_str = table.concat(quoted_urls, " ")
 
   -- Format browser command
   local cmd = string.format(cfg.apps.browser, url_str)
 
-  -- Add class modifier if provided (for Firefox)
-  if class then
-    -- Firefox doesn't support --class directly, but we can use a new window
-    -- The i3 marking will happen after window appears
-    cmd = cmd .. " &"
-  else
-    cmd = cmd .. " &"
-  end
-
   log.debug("Running: %s", cmd)
-  vim.fn.system(cmd)
 
-  if vim.v.shell_error ~= 0 then
+  -- Use jobstart with shell to properly handle the command
+  local job_id = vim.fn.jobstart({ "sh", "-c", cmd }, { detach = true })
+
+  if job_id <= 0 then
     return false, "Failed to open browser"
   end
 
