@@ -445,6 +445,23 @@ If keyboard shortcuts like `<leader>fs` (suspend) aren't showing the picker, ens
 - `:FocusSuspend` - Shows picker
 - `:FocusSuspend my-focus` - Suspends specific focus directly
 
+## Utility Scripts
+
+FSM includes bash scripts for managing workspaces and focuses from outside Neovim. See [bin/README.md](bin/README.md) for details:
+
+- **`fsm-workspace-switch`** - Quick workspace switching with dmenu/rofi
+- **`fsm-control`** - Full FSM control panel via dmenu/rofi
+- **`fsm-ws`** - Terminal-based workspace switcher using fzf
+
+Example i3 keybindings:
+```
+# Quick workspace switch
+bindsym $mod+Tab exec --no-startup-id ~/code/fsm.nvim/bin/fsm-workspace-switch rofi
+
+# FSM control panel
+bindsym $mod+Shift+f exec --no-startup-id ~/code/fsm.nvim/bin/fsm-control rofi
+```
+
 ## License
 
 MIT
