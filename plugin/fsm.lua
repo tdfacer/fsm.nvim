@@ -296,6 +296,96 @@ local function create_commands()
       return slugs
     end,
   })
+
+  -- :FocusUrls [slug]
+  vim.api.nvim_create_user_command("FocusUrls", function(opts)
+    local slug = opts.args ~= "" and utils.slugify(opts.args) or nil
+    -- If no slug provided and no current focus, show picker
+    if not slug and not fsm.current() then
+      local picker = require("fsm.ui.picker")
+      picker.pick_focus(function(focus)
+        if focus then
+          local ok, err = fsm.open_urls(focus.slug)
+          if not ok then
+            vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+          end
+        end
+      end, { include_archived = true })
+      return
+    end
+    local ok, err = fsm.open_urls(slug)
+    if not ok then
+      vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+    end
+  end, {
+    nargs = "?",
+    desc = "Open URLs for focus in browser",
+    complete = function()
+      local focuses = store.list_all()
+      local slugs = {}
+      for _, f in ipairs(focuses) do
+        table.insert(slugs, f.slug)
+      end
+      return slugs
+    end,
+  })
+
+  -- :FocusAddUrl <url>
+  vim.api.nvim_create_user_command("FocusAddUrl", function(opts)
+    local url = opts.args
+    if url == "" then
+      vim.ui.input({ prompt = "URL: " }, function(input)
+        if input and input ~= "" then
+          local ok, err = fsm.add_url(input)
+          if not ok then
+            vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+          else
+            vim.notify("[FSM] URL added", vim.log.levels.INFO)
+          end
+        end
+      end)
+      return
+    end
+    local ok, err = fsm.add_url(url)
+    if not ok then
+      vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+    else
+      vim.notify("[FSM] URL added", vim.log.levels.INFO)
+    end
+  end, {
+    nargs = "?",
+    desc = "Add URL to current focus",
+  })
+
+  -- :FocusListUrls [slug]
+  vim.api.nvim_create_user_command("FocusListUrls", function(opts)
+    local slug = opts.args ~= "" and utils.slugify(opts.args) or nil
+    local urls, err = fsm.list_urls(slug)
+    if not urls then
+      vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+      return
+    end
+    if #urls == 0 then
+      vim.notify("[FSM] No URLs saved for this focus", vim.log.levels.INFO)
+      return
+    end
+    local lines = { "URLs:" }
+    for i, url in ipairs(urls) do
+      table.insert(lines, string.format("  %d. %s", i, url))
+    end
+    vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
+  end, {
+    nargs = "?",
+    desc = "List URLs for focus",
+    complete = function()
+      local focuses = store.list_all()
+      local slugs = {}
+      for _, f in ipairs(focuses) do
+        table.insert(slugs, f.slug)
+      end
+      return slugs
+    end,
+  })
 end
 
 create_commands()

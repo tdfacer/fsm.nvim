@@ -121,6 +121,31 @@ function M.add_urls(urls, slug)
   return commands.add_urls(urls, slug)
 end
 
+--- Add a single URL to focus
+---@param url string
+---@param slug? string
+---@return boolean ok
+---@return string? error
+function M.add_url(url, slug)
+  return commands.add_url(url, slug)
+end
+
+--- Open URLs for focus in browser
+---@param slug? string
+---@return boolean ok
+---@return string? error
+function M.open_urls(slug)
+  return commands.open_urls(slug)
+end
+
+--- List URLs for focus
+---@param slug? string
+---@return string[]? urls
+---@return string? error
+function M.list_urls(slug)
+  return commands.list_urls(slug)
+end
+
 --- Check if focus exists
 ---@param slug string
 ---@return boolean

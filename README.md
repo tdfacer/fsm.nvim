@@ -51,6 +51,8 @@ Run `:checkhealth fsm` to verify your setup.
     { "<leader>Fi", "<cmd>FocusStatus<cr>", desc = "Focus info/status" },
     { "<leader>Fn", "<cmd>FocusNotes<cr>", desc = "Open focus notes" },
     { "<leader>Ft", "<cmd>FocusTodo<cr>", desc = "Open focus todo" },
+    { "<leader>Fu", "<cmd>FocusUrls<cr>", desc = "Open focus URLs" },
+    { "<leader>FU", "<cmd>FocusAddUrl<cr>", desc = "Add URL to focus" },
     { "<leader>Fa", "<cmd>FocusArchive<cr>", desc = "Archive focus" },
     { "<leader>Fd", "<cmd>FocusDelete<cr>", desc = "Delete archived focus" },
   },
@@ -102,6 +104,11 @@ require("fsm").setup({
     auto_open = true,  -- Start nvim with notes.md in tmux session
   },
 
+  -- URL configuration
+  urls = {
+    auto_open_on_resume = true,  -- Open saved URLs when resuming focus
+  },
+
   -- Environment variable patterns to redact from saved state
   redact_env_vars = { ".*SECRET.*", ".*TOKEN.*", ".*KEY.*", ".*PASSWORD.*" },
 
@@ -118,7 +125,7 @@ All commands that require a focus will show a picker if called without arguments
 |---------|-------------|
 | `:FocusStart [name]` | Create focus, allocate workspace, launch terminal with nvim+notes |
 | `:FocusSuspend [slug]` | Save state, park browser windows (defaults to current focus) |
-| `:FocusResume [slug]` | Restore workspace, unpark windows, load session (picker if no arg) |
+| `:FocusResume [slug]` | Restore workspace, unpark windows, open URLs (picker if no arg) |
 | `:FocusSwitch` | Picker to suspend current + resume selected |
 | `:FocusList` | List all focuses with state indicators |
 | `:FocusStatus` | Show current focus details and driver availability |
@@ -126,6 +133,9 @@ All commands that require a focus will show a picker if called without arguments
 | `:FocusDelete [slug]` | Permanently delete archived focus (picker if no arg) |
 | `:FocusNotes [slug]` | Open notes.md for focus |
 | `:FocusTodo [slug]` | Open todo.md for focus |
+| `:FocusUrls [slug]` | Open all saved URLs in browser |
+| `:FocusAddUrl [url]` | Add URL to current focus (prompts if no arg) |
+| `:FocusListUrls [slug]` | List saved URLs for focus |
 
 ## Keymaps
 
@@ -147,6 +157,8 @@ vim.keymap.set("n", "<leader>Fi", "<cmd>FocusStatus<cr>", vim.tbl_extend("force"
 -- Focus files
 vim.keymap.set("n", "<leader>Fn", "<cmd>FocusNotes<cr>", vim.tbl_extend("force", opts, { desc = "Focus notes" }))
 vim.keymap.set("n", "<leader>Ft", "<cmd>FocusTodo<cr>", vim.tbl_extend("force", opts, { desc = "Focus todo" }))
+vim.keymap.set("n", "<leader>Fu", "<cmd>FocusUrls<cr>", vim.tbl_extend("force", opts, { desc = "Open focus URLs" }))
+vim.keymap.set("n", "<leader>FU", "<cmd>FocusAddUrl<cr>", vim.tbl_extend("force", opts, { desc = "Add URL to focus" }))
 
 -- Lifecycle
 vim.keymap.set("n", "<leader>Fa", "<cmd>FocusArchive<cr>", vim.tbl_extend("force", opts, { desc = "Archive focus" }))
@@ -167,6 +179,8 @@ require("which-key").register({
     i = { "<cmd>FocusStatus<cr>", "Focus info" },
     n = { "<cmd>FocusNotes<cr>", "Focus notes" },
     t = { "<cmd>FocusTodo<cr>", "Focus todo" },
+    u = { "<cmd>FocusUrls<cr>", "Open URLs" },
+    U = { "<cmd>FocusAddUrl<cr>", "Add URL" },
     a = { "<cmd>FocusArchive<cr>", "Archive focus" },
     d = { "<cmd>FocusDelete<cr>", "Delete focus" },
   },
@@ -249,8 +263,13 @@ fsm.status()  -- { has_focus, focus, i3_available, tmux_available, ... }
 fsm.notes("my-focus")
 fsm.todo("my-focus")
 
--- Add URLs to focus
-fsm.add_urls({ "https://example.com" }, "my-focus")
+-- URL management
+fsm.add_url("https://example.com")              -- add to current focus
+fsm.add_url("https://example.com", "my-focus")  -- add to specific focus
+fsm.add_urls({ "https://a.com", "https://b.com" }, "my-focus")
+fsm.open_urls()           -- open URLs for current focus in browser
+fsm.open_urls("my-focus") -- open URLs for specific focus
+fsm.list_urls("my-focus") -- returns array of URLs
 ```
 
 ## Data Storage

@@ -21,6 +21,9 @@ local defaults = {
   notes = {
     auto_open = true,
   },
+  urls = {
+    auto_open_on_resume = true,
+  },
   redact_env_vars = { ".*SECRET.*", ".*TOKEN.*", ".*KEY.*", ".*PASSWORD.*" },
   data_dir = vim.fn.expand("~/.local/share/focus"),
 }

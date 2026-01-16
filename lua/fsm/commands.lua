@@ -216,6 +216,16 @@ function M.resume(slug)
     focus.parked_containers = nil
   end
 
+  -- Open URLs if configured
+  local cfg = config.get()
+  if cfg.urls and cfg.urls.auto_open_on_resume then
+    local urls = store.load_urls(slug)
+    if #urls > 0 and browser.available() then
+      browser.open_urls(urls)
+      log.debug("Opened %d URL(s) on resume", #urls)
+    end
+  end
+
   -- Load nvim state
   nvim.load_state(slug)
 
@@ -436,14 +446,100 @@ function M.add_urls(urls, slug)
     return false, "No focus specified"
   end
 
+  if not store.exists(slug) then
+    return false, "Focus not found: " .. slug
+  end
+
   local existing = store.load_urls(slug)
+  local added = 0
   for _, url in ipairs(urls) do
     if browser.is_valid_url(url) then
-      table.insert(existing, url)
+      -- Avoid duplicates
+      local already_exists = false
+      for _, existing_url in ipairs(existing) do
+        if existing_url == url then
+          already_exists = true
+          break
+        end
+      end
+      if not already_exists then
+        table.insert(existing, url)
+        added = added + 1
+      end
     end
   end
 
-  return store.save_urls(slug, existing)
+  if added > 0 then
+    local ok, err = store.save_urls(slug, existing)
+    if ok then
+      log.info("Added %d URL(s) to %s", added, slug)
+    end
+    return ok, err
+  end
+
+  return true, nil
+end
+
+--- Add a single URL to current focus
+---@param url string
+---@param slug? string Focus slug (defaults to current)
+---@return boolean ok
+---@return string? error
+function M.add_url(url, slug)
+  if not url or url == "" then
+    return false, "URL required"
+  end
+  if not browser.is_valid_url(url) then
+    return false, "Invalid URL (must start with http:// or https://)"
+  end
+  return M.add_urls({ url }, slug)
+end
+
+--- Open URLs for a focus in browser
+---@param slug? string Focus slug (defaults to current)
+---@return boolean ok
+---@return string? error
+function M.open_urls(slug)
+  slug = slug or state.current_slug()
+  if not slug then
+    return false, "No focus specified"
+  end
+
+  if not store.exists(slug) then
+    return false, "Focus not found: " .. slug
+  end
+
+  local urls = store.load_urls(slug)
+  if #urls == 0 then
+    return false, "No URLs saved for this focus"
+  end
+
+  if not browser.available() then
+    return false, "Browser not available"
+  end
+
+  local ok, err = browser.open_urls(urls)
+  if ok then
+    log.info("Opened %d URL(s) for %s", #urls, slug)
+  end
+  return ok, err
+end
+
+--- List URLs for a focus
+---@param slug? string Focus slug (defaults to current)
+---@return string[]? urls
+---@return string? error
+function M.list_urls(slug)
+  slug = slug or state.current_slug()
+  if not slug then
+    return nil, "No focus specified"
+  end
+
+  if not store.exists(slug) then
+    return nil, "Focus not found: " .. slug
+  end
+
+  return store.load_urls(slug), nil
 end
 
 return M
