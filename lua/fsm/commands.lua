@@ -505,7 +505,8 @@ function M.open_urls(slug)
     return false, "No focus specified"
   end
 
-  if not store.exists(slug) then
+  local focus = store.load(slug)
+  if not focus then
     return false, "Focus not found: " .. slug
   end
 
@@ -516,6 +517,11 @@ function M.open_urls(slug)
 
   if not browser.available() then
     return false, "Browser not available"
+  end
+
+  -- Switch to focus workspace before opening browser
+  if focus.workspace_name and i3.available() then
+    i3.goto_workspace(focus.workspace_name)
   end
 
   local ok, err = browser.open_urls(urls)
