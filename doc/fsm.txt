@@ -1,0 +1,248 @@
+*fsm.txt*  Focus Set Manager for Neovim
+
+Author:  Your Name
+License: MIT
+
+==============================================================================
+CONTENTS                                                          *fsm-contents*
+
+    1. Introduction .......................... |fsm-introduction|
+    2. Requirements .......................... |fsm-requirements|
+    3. Installation .......................... |fsm-installation|
+    4. Configuration ......................... |fsm-configuration|
+    5. Commands .............................. |fsm-commands|
+    6. API ................................... |fsm-api|
+    7. Statusline ............................ |fsm-statusline|
+    8. Telescope ............................. |fsm-telescope|
+    9. Health Check .......................... |fsm-health|
+
+==============================================================================
+1. INTRODUCTION                                               *fsm-introduction*
+
+FSM (Focus Set Manager) is a Neovim plugin that manages Focus Sets - named
+work contexts spanning i3 workspaces, tmux sessions, Neovim state, and browser
+windows. Designed for DevOps workflows with heavy context switching.
+
+A Focus Set includes:
+- An i3 workspace (allocated from a configurable range)
+- A tmux session with your working directory
+- Neovim session state
+- Associated notes and todos
+- Canonical URLs to open
+
+==============================================================================
+2. REQUIREMENTS                                               *fsm-requirements*
+
+Required:
+- Neovim 0.9+
+- Arch Linux (tested environment)
+
+Recommended:
+- i3 4.x (for workspace management)
+- tmux 3.x (for session management)
+- alacritty (default terminal)
+- firefox (default browser)
+
+Optional:
+- telescope.nvim (for enhanced picker)
+- plenary.nvim (for testing)
+
+Run `:checkhealth fsm` to verify your setup.
+
+==============================================================================
+3. INSTALLATION                                               *fsm-installation*
+
+Using lazy.nvim: >lua
+    {
+      "your-username/fsm.nvim",
+      config = function()
+        require("fsm").setup()
+      end,
+    }
+<
+
+Using packer.nvim: >lua
+    use {
+      "your-username/fsm.nvim",
+      config = function()
+        require("fsm").setup()
+      end,
+    }
+<
+
+==============================================================================
+4. CONFIGURATION                                             *fsm-configuration*
+
+Call `require("fsm").setup()` with your options: >lua
+
+    require("fsm").setup({
+      -- Workspace numbers to allocate (default: 10-19)
+      workspace_range = { 10, 19 },
+
+      -- Workspace for parked windows during suspend
+      parking_workspace = 99,
+
+      -- How to handle windows on suspend
+      suspend_policy = {
+        terminals = "keep",   -- keep tmux running
+        browsers = "park",    -- move to parking workspace
+      },
+
+      -- Application launch commands
+      apps = {
+        terminal = 'alacritty --class "focus-%s,Alacritty" -e %s',
+        browser = "firefox %s",
+      },
+
+      -- tmux configuration
+      tmux = {
+        enabled = true,
+        session_prefix = "focus/",
+      },
+
+      -- Notes configuration
+      notes = {
+        auto_open = true,  -- Open notes.md on FocusStart
+      },
+
+      -- Patterns for environment variables to redact
+      redact_env_vars = { ".*SECRET.*", ".*TOKEN.*", ".*KEY.*", ".*PASSWORD.*" },
+
+      -- Data storage location
+      data_dir = "~/.local/share/focus",
+    })
+<
+
+==============================================================================
+5. COMMANDS                                                       *fsm-commands*
+
+                                                                   *:FocusStart*
+:FocusStart {name}
+    Create a new focus with the given name. Allocates a workspace, creates a
+    tmux session, and opens the notes file.
+
+                                                                 *:FocusSuspend*
+:FocusSuspend [{slug}]
+    Suspend the current or specified focus. Saves Neovim session, parks
+    browser windows to workspace 99, and updates the focus state.
+
+                                                                  *:FocusResume*
+:FocusResume {slug}
+    Resume a suspended focus. Restores the workspace, unparks windows, and
+    loads the saved Neovim state.
+
+                                                                 *:FocusArchive*
+:FocusArchive {slug}
+    Archive a focus. Marks it as read-only and frees the workspace number.
+
+                                                                    *:FocusList*
+:FocusList
+    List all focuses with their states.
+
+                                                                  *:FocusSwitch*
+:FocusSwitch
+    Open a picker to suspend current focus and resume another.
+
+                                                                  *:FocusStatus*
+:FocusStatus
+    Show current focus status and driver availability.
+
+                                                                   *:FocusNotes*
+:FocusNotes [{slug}]
+    Open notes for the current or specified focus.
+
+                                                                    *:FocusTodo*
+:FocusTodo [{slug}]
+    Open todo for the current or specified focus.
+
+==============================================================================
+6. API                                                               *fsm-api*
+
+The Lua API is available via `require("fsm")`:
+
+fsm.start({name}, {opts})                                         *fsm.start()*
+    Start a new focus. Returns (ok, error).
+    Options:
+      - urls: string[] - URLs to open in browser
+
+fsm.suspend({slug})                                             *fsm.suspend()*
+    Suspend a focus (or current if nil). Returns (ok, error).
+
+fsm.resume({slug})                                               *fsm.resume()*
+    Resume a focus. Returns (ok, error).
+
+fsm.archive({slug})                                             *fsm.archive()*
+    Archive a focus. Returns (ok, error).
+
+fsm.switch({slug})                                               *fsm.switch()*
+    Switch to a different focus. Returns (ok, error).
+
+fsm.list({opts})                                                   *fsm.list()*
+    List focuses. Returns FocusMeta[].
+    Options:
+      - state: "active"|"suspended"|"archived" - filter by state
+
+fsm.status()                                                     *fsm.status()*
+    Get current focus status. Returns table.
+
+fsm.current()                                                   *fsm.current()*
+    Get current focus slug. Returns string or nil.
+
+fsm.current_focus()                                       *fsm.current_focus()*
+    Get current focus metadata. Returns FocusMeta or nil.
+
+==============================================================================
+7. STATUSLINE                                                   *fsm-statusline*
+
+FSM provides statusline components via `require("fsm.ui.status")`:
+
+For lualine: >lua
+    require("lualine").setup({
+      sections = {
+        lualine_x = {
+          require("fsm.ui.status").lualine_component()
+        }
+      }
+    })
+<
+
+Manual statusline: >lua
+    local status = require("fsm.ui.status")
+
+    -- Basic component
+    status.statusline()      -- Returns "● Focus Name" or ""
+
+    -- Full component with workspace
+    status.statusline_full() -- Returns "● Focus Name [10]" or ""
+
+    -- Individual parts
+    status.focus_name()      -- Returns focus name or ""
+    status.focus_icon()      -- Returns "●", "○", or "◌"
+    status.has_focus()       -- Returns boolean
+<
+
+==============================================================================
+8. TELESCOPE                                                     *fsm-telescope*
+
+When telescope.nvim is installed, `:FocusSwitch` uses Telescope for the
+picker. The picker shows:
+
+  ● active focuses (filled circle)
+  ○ suspended focuses (empty circle)
+  * current focus (marked with asterisk)
+
+==============================================================================
+9. HEALTH CHECK                                                     *fsm-health*
+
+Run `:checkhealth fsm` to verify:
+
+- Neovim version
+- i3 availability and status
+- tmux installation
+- Terminal (alacritty) availability
+- Browser (firefox) availability
+- Data directory status
+- Optional dependencies (telescope, plenary)
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:
