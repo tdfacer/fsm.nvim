@@ -143,41 +143,49 @@ local function create_commands()
   -- :FocusDelete [name]
   vim.api.nvim_create_user_command("FocusDelete", function(opts)
     local slug = opts.args
+
+    -- Helper to confirm and delete
+    local function confirm_delete(focus)
+      local is_archived = focus.state == "archived"
+      local prompt = is_archived
+        and string.format("Delete archived focus '%s' permanently? ", focus.name)
+        or string.format("Delete %s focus '%s'? (will force delete) ", focus.state, focus.name)
+
+      vim.ui.select({ "Yes", "No" }, { prompt = prompt }, function(choice)
+        if choice == "Yes" then
+          local ok, err = fsm.delete(focus.slug, { force = not is_archived })
+          if not ok then
+            vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+          else
+            vim.notify("[FSM] Deleted: " .. focus.name, vim.log.levels.INFO)
+          end
+        end
+      end)
+    end
+
     if slug == "" then
-      -- Use picker if no argument (only show archived)
+      -- Use picker if no argument (show all focuses)
       local picker = require("fsm.ui.picker")
       picker.pick_focus(function(focus)
         if focus then
-          vim.ui.select({ "Yes", "No" }, {
-            prompt = string.format("Delete focus '%s' permanently? ", focus.name),
-          }, function(choice)
-            if choice == "Yes" then
-              local ok, err = fsm.delete(focus.slug)
-              if not ok then
-                vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
-              end
-            end
-          end)
+          confirm_delete(focus)
         end
-      end, { filter_state = "archived", include_archived = true })
+      end, { include_archived = true })
       return
     end
-    -- Confirm deletion
-    vim.ui.select({ "Yes", "No" }, {
-      prompt = string.format("Delete focus '%s' permanently? ", slug),
-    }, function(choice)
-      if choice == "Yes" then
-        local ok, err = fsm.delete(slug)
-        if not ok then
-          vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
-        end
-      end
-    end)
+
+    -- Direct slug provided
+    local focus = fsm.load(slug)
+    if not focus then
+      vim.notify("[FSM] Focus not found: " .. slug, vim.log.levels.ERROR)
+      return
+    end
+    confirm_delete(focus)
   end, {
     nargs = "?",
     desc = "Delete a focus permanently",
     complete = function()
-      local focuses = store.by_state("archived")
+      local focuses = store.list_all()
       local slugs = {}
       for _, f in ipairs(focuses) do
         table.insert(slugs, f.slug)
