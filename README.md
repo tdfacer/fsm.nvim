@@ -56,6 +56,7 @@ Run `:checkhealth fsm` to verify your setup.
     { "<leader>Fu", "<cmd>FocusUrls<cr>", desc = "Open focus URLs" },
     { "<leader>FU", "<cmd>FocusAddUrl<cr>", desc = "Add URL to focus" },
     { "<leader>FL", "<cmd>FocusListUrls<cr>", desc = "List focus URLs" },
+    { "<leader>Fe", "<cmd>FocusEditUrls<cr>", desc = "Edit focus URLs" },
     { "<leader>Fa", "<cmd>FocusArchive<cr>", desc = "Archive focus" },
     { "<leader>Fd", "<cmd>FocusDelete<cr>", desc = "Delete archived focus" },
   },
@@ -140,6 +141,7 @@ All commands that require a focus will show a picker if called without arguments
 | `:FocusUrls [slug]` | Open all saved URLs in browser |
 | `:FocusAddUrl [url]` | Add URL to current focus (prompts if no arg) |
 | `:FocusListUrls [slug]` | List saved URLs for focus |
+| `:FocusEditUrls [slug]` | Edit urls.txt file directly |
 | `:FocusHealth` | Show health status of all focuses |
 | `:FocusRepair [--dry-run]` | Fix orphaned focuses after crash/reboot |
 
@@ -168,6 +170,7 @@ vim.keymap.set("n", "<leader>Ft", "<cmd>FocusTodo<cr>", vim.tbl_extend("force", 
 vim.keymap.set("n", "<leader>Fu", "<cmd>FocusUrls<cr>", vim.tbl_extend("force", opts, { desc = "Open focus URLs" }))
 vim.keymap.set("n", "<leader>FU", "<cmd>FocusAddUrl<cr>", vim.tbl_extend("force", opts, { desc = "Add URL to focus" }))
 vim.keymap.set("n", "<leader>FL", "<cmd>FocusListUrls<cr>", vim.tbl_extend("force", opts, { desc = "List focus URLs" }))
+vim.keymap.set("n", "<leader>Fe", "<cmd>FocusEditUrls<cr>", vim.tbl_extend("force", opts, { desc = "Edit focus URLs" }))
 
 -- Lifecycle
 vim.keymap.set("n", "<leader>Fa", "<cmd>FocusArchive<cr>", vim.tbl_extend("force", opts, { desc = "Archive focus" }))
@@ -193,6 +196,7 @@ require("which-key").register({
     u = { "<cmd>FocusUrls<cr>", "Open URLs" },
     U = { "<cmd>FocusAddUrl<cr>", "Add URL" },
     L = { "<cmd>FocusListUrls<cr>", "List URLs" },
+    e = { "<cmd>FocusEditUrls<cr>", "Edit URLs" },
     a = { "<cmd>FocusArchive<cr>", "Archive focus" },
     d = { "<cmd>FocusDelete<cr>", "Delete focus" },
   },

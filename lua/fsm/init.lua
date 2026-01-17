@@ -112,6 +112,14 @@ function M.todo(slug)
   return commands.todo(slug)
 end
 
+--- Edit URLs file for focus
+---@param slug? string
+---@return boolean ok
+---@return string? error
+function M.edit_urls(slug)
+  return commands.edit_urls(slug)
+end
+
 --- Add URLs to focus
 ---@param urls string[]
 ---@param slug? string

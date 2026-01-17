@@ -250,6 +250,13 @@ function M.load_urls(slug)
   return urls
 end
 
+--- Get URLs file path
+---@param slug string
+---@return string
+function M.urls_path(slug)
+  return config.focus_dir(slug) .. "/urls.txt"
+end
+
 --- Get notes file path
 ---@param slug string
 ---@return string

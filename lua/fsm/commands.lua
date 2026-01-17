@@ -493,6 +493,25 @@ function M.todo(slug)
   return true, nil
 end
 
+--- Edit URLs file for current or specified focus
+---@param slug? string Focus slug (defaults to current)
+---@return boolean ok
+---@return string? error
+function M.edit_urls(slug)
+  slug = slug or state.current_slug()
+  if not slug then
+    return false, "No focus specified"
+  end
+
+  if not store.exists(slug) then
+    return false, "Focus not found: " .. slug
+  end
+
+  local path = store.urls_path(slug)
+  vim.cmd("edit " .. vim.fn.fnameescape(path))
+  return true, nil
+end
+
 --- Add URLs to current focus
 ---@param urls string[]
 ---@param slug? string Focus slug (defaults to current)

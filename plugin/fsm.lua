@@ -447,6 +447,42 @@ local function create_commands()
       return slugs
     end,
   })
+
+  -- :FocusEditUrls [slug]
+  vim.api.nvim_create_user_command("FocusEditUrls", function(opts)
+    local slug = opts.args ~= "" and utils.slugify(opts.args) or nil
+
+    -- If no slug and no current focus, show picker
+    if not slug and not fsm.current() then
+      local picker = require("fsm.ui.picker")
+      picker.pick_focus(function(focus)
+        if focus then
+          local ok, err = fsm.edit_urls(focus.slug)
+          if not ok then
+            vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+          end
+        end
+      end, { include_archived = true })
+      return
+    end
+
+    local ok, err = fsm.edit_urls(slug)
+    if not ok then
+      vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+    end
+  end, {
+    nargs = "?",
+    desc = "Edit URLs file for focus",
+    complete = function()
+      local focuses = store.list_all()
+      local slugs = {}
+      for _, f in ipairs(focuses) do
+        table.insert(slugs, f.slug)
+      end
+      return slugs
+    end,
+  })
+
   -- :FocusRepair [--dry-run]
   vim.api.nvim_create_user_command("FocusRepair", function(opts)
     local dry_run = opts.args == "--dry-run"
