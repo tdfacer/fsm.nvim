@@ -37,6 +37,15 @@ function M.start(name, opts)
     return false, create_err
   end
 
+  -- Capture current working directory if enabled
+  local cfg = config.get()
+  if cfg.tmux.enabled and cfg.tmux.track_cwd then
+    -- Use pwd as initial directory for new focus
+    focus.cwd = vim.fn.getcwd()
+    log.debug("Set initial working directory: %s", focus.cwd)
+    store.save(focus)
+  end
+
   -- Set as current focus
   state.set_current(focus.slug)
 
@@ -124,6 +133,16 @@ function M.suspend(slug)
   -- Handle windows based on suspend policy
   local cfg = config.get()
   local parked_ids = {}
+
+  -- Capture current working directory from tmux if enabled
+  if cfg.tmux.enabled and cfg.tmux.track_cwd and tmux.available() then
+    local session = tmux.session_name(slug)
+    local cwd = tmux.get_pane_cwd(session)
+    if cwd then
+      focus.cwd = cwd
+      log.debug("Captured working directory: %s", cwd)
+    end
+  end
 
   if i3.available() then
     -- Save marks

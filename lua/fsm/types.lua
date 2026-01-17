@@ -39,6 +39,7 @@
 ---@class TmuxConfig
 ---@field enabled boolean Whether to use tmux
 ---@field session_prefix string Prefix for tmux session names
+---@field track_cwd boolean Track and restore working directory
 
 ---@class NotesConfig
 ---@field auto_open boolean Whether to auto-open notes on focus start

@@ -17,6 +17,7 @@ local defaults = {
   tmux = {
     enabled = true,
     session_prefix = "focus/",
+    track_cwd = true,  -- Track and restore working directory
   },
   notes = {
     auto_open = true,

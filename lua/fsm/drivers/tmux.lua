@@ -164,4 +164,31 @@ function M.send_keys(name, keys)
   return vim.v.shell_error == 0
 end
 
+--- Get current pane's working directory
+---@param name string Session name
+---@return string? cwd Current working directory or nil if not found
+function M.get_pane_cwd(name)
+  if not M.session_exists(name) then
+    return nil
+  end
+
+  local result = vim.fn.system(string.format(
+    "tmux display-message -p -t %s -F '#{pane_current_path}'",
+    vim.fn.shellescape(name)
+  ))
+
+  if vim.v.shell_error ~= 0 then
+    log.debug("Failed to get pane cwd for session: %s", name)
+    return nil
+  end
+
+  local cwd = vim.trim(result)
+  if cwd ~= "" then
+    log.debug("Got pane cwd for %s: %s", name, cwd)
+    return cwd
+  end
+
+  return nil
+end
+
 return M
