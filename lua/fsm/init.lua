@@ -160,4 +160,17 @@ function M.load(slug)
   return store.load(slug)
 end
 
+--- Repair orphaned focuses (after crash/reboot)
+---@param opts? { dry_run: boolean }
+---@return table results
+function M.repair(opts)
+  return commands.repair(opts)
+end
+
+--- Health check for all focuses
+---@return table[] status_list
+function M.health_check()
+  return commands.health_check()
+end
+
 return M

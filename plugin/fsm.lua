@@ -421,6 +421,73 @@ local function create_commands()
       return slugs
     end,
   })
+  -- :FocusRepair [--dry-run]
+  vim.api.nvim_create_user_command("FocusRepair", function(opts)
+    local dry_run = opts.args == "--dry-run"
+    local results = fsm.repair({ dry_run = dry_run })
+
+    if #results.issues == 0 then
+      vim.notify("[FSM] All focuses are healthy", vim.log.levels.INFO)
+      return
+    end
+
+    local lines = {}
+    if dry_run then
+      table.insert(lines, "Issues found (dry run - no changes made):")
+    else
+      table.insert(lines, string.format("Repaired %d focus(es):", results.fixed))
+    end
+
+    for _, issue in ipairs(results.issues) do
+      table.insert(lines, string.format("  • %s: %s", issue.name, table.concat(issue.problems, ", ")))
+    end
+
+    vim.notify(table.concat(lines, "\n"), dry_run and vim.log.levels.WARN or vim.log.levels.INFO)
+  end, {
+    nargs = "?",
+    desc = "Repair orphaned focuses after crash/reboot",
+  })
+
+  -- :FocusHealth
+  vim.api.nvim_create_user_command("FocusHealth", function()
+    local status_list = fsm.health_check()
+
+    if #status_list == 0 then
+      vim.notify("[FSM] No focuses found", vim.log.levels.INFO)
+      return
+    end
+
+    local lines = { "Focus Health:" }
+    for _, status in ipairs(status_list) do
+      local icon = status.healthy and "✓" or "✗"
+      local state_icon = ({ active = "●", suspended = "○", archived = "◌" })[status.state] or "?"
+
+      local line = string.format("  %s %s %s (%s)", icon, state_icon, status.name, status.state)
+
+      if status.state == "active" then
+        local details = {}
+        if status.workspace_num then
+          table.insert(details, "ws:" .. status.workspace_num .. (status.workspace_exists and "✓" or "✗"))
+        end
+        if status.tmux_session then
+          table.insert(details, "tmux:" .. (status.tmux_exists and "✓" or "✗"))
+        end
+        if #details > 0 then
+          line = line .. " [" .. table.concat(details, " ") .. "]"
+        end
+      end
+
+      if #status.issues > 0 then
+        line = line .. " - " .. table.concat(status.issues, ", ")
+      end
+
+      table.insert(lines, line)
+    end
+
+    vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
+  end, {
+    desc = "Show health status of all focuses",
+  })
 end
 
 create_commands()

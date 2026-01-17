@@ -87,6 +87,42 @@ function M.alloc_workspace(min, max)
   return nil, string.format("No available workspace in range %d-%d", min, max)
 end
 
+--- Check if a workspace exists by number
+---@param num number Workspace number
+---@return boolean exists
+function M.workspace_exists(num)
+  local workspaces, err = M.get_workspaces()
+  if not workspaces then
+    log.debug("Failed to get workspaces: %s", err)
+    return false
+  end
+
+  for _, ws in ipairs(workspaces) do
+    if ws.num == num then
+      return true
+    end
+  end
+  return false
+end
+
+--- Check if a workspace exists by name
+---@param name string Workspace name
+---@return boolean exists
+function M.workspace_exists_by_name(name)
+  local workspaces, err = M.get_workspaces()
+  if not workspaces then
+    log.debug("Failed to get workspaces: %s", err)
+    return false
+  end
+
+  for _, ws in ipairs(workspaces) do
+    if ws.name == name then
+      return true
+    end
+  end
+  return false
+end
+
 --- Go to a workspace
 ---@param name string
 ---@return boolean ok

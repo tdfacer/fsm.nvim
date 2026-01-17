@@ -198,20 +198,37 @@ function M.resume(slug)
     return false, "Cannot resume archived focus"
   end
 
-  -- If we're resuming something that was active, still set context
-  if focus.state == "active" and focus.workspace_name then
-    -- Just switch to the workspace
-    if i3.available() then
-      i3.goto_workspace(focus.workspace_name)
+  local cfg = config.get()
+  local needs_full_resume = true
+
+  -- Check if this focus is truly active (workspace and tmux session exist)
+  if focus.state == "active" and focus.workspace_num then
+    local ws_exists = not i3.available() or i3.workspace_exists(focus.workspace_num)
+    local tmux_exists = not cfg.tmux.enabled or not tmux.available() or tmux.session_exists(tmux.session_name(slug))
+
+    if ws_exists and tmux_exists then
+      -- Truly active - just switch to it
+      if i3.available() then
+        i3.goto_workspace(focus.workspace_name)
+      end
+      state.set_current(slug)
+      nvim.set_focus_context(focus)
+      log.info("Switched to active focus: %s", slug)
+      return true, nil
+    else
+      -- Resources are gone (e.g., after reboot) - need full resume
+      log.info("Focus %s marked active but resources missing, performing full resume", slug)
+      -- Clear stale workspace allocation so we get a fresh one
+      focus.workspace_num = nil
+      focus.workspace_name = nil
+      focus.parked_containers = nil
     end
-    state.set_current(slug)
-    nvim.set_focus_context(focus)
-    return true, nil
   end
 
+  -- Full resume: allocate workspace, create tmux session, launch terminal
+
   -- Allocate workspace if needed
-  if not focus.workspace_num and i3.available() then
-    local cfg = config.get()
+  if i3.available() then
     local num, err = i3.alloc_workspace(cfg.workspace_range[1], cfg.workspace_range[2])
     if num then
       focus.workspace_num = num
@@ -227,26 +244,13 @@ function M.resume(slug)
     i3.rename_workspace(focus.workspace_name)
   end
 
-  -- Unpark windows
+  -- Unpark windows (only if they still exist)
   if focus.parked_containers and #focus.parked_containers > 0 and i3.available() then
     if focus.workspace_name then
       i3.unpark_windows(focus.parked_containers, focus.workspace_name)
     end
     focus.parked_containers = nil
   end
-
-  -- Open URLs if configured
-  local cfg = config.get()
-  if cfg.urls and cfg.urls.auto_open_on_resume then
-    local urls = store.load_urls(slug)
-    if #urls > 0 and browser.available() then
-      browser.open_urls(urls)
-      log.debug("Opened %d URL(s) on resume", #urls)
-    end
-  end
-
-  -- Load nvim state
-  nvim.load_state(slug)
 
   -- Update focus state
   focus.state = "active"
@@ -261,11 +265,46 @@ function M.resume(slug)
   state.set_current(slug)
   nvim.set_focus_context(focus)
 
-  -- Ensure tmux session
-  local cfg = config.get()
+  -- Ensure tmux session exists and launch terminal
   if cfg.tmux.enabled and tmux.available() then
-    tmux.ensure_session(focus.slug, focus.cwd)
+    local session = tmux.session_name(slug)
+    local session_created = false
+
+    if not tmux.session_exists(session) then
+      -- Determine initial command (nvim with notes if auto_open)
+      local initial_cmd = nil
+      if cfg.notes.auto_open then
+        local notes_path = store.notes_path(slug)
+        initial_cmd = string.format("nvim %s", vim.fn.shellescape(notes_path))
+      end
+
+      local tmux_ok, tmux_err = tmux.create_session(session, focus.cwd, initial_cmd)
+      if tmux_ok then
+        focus.tmux_session = session
+        store.save(focus)
+        session_created = true
+      else
+        log.warn("Failed to create tmux session: %s", tmux_err)
+      end
+    end
+
+    -- Launch terminal attached to tmux session
+    local terminal_cmd = tmux.get_terminal_command(slug, focus.cwd, nil)
+    log.debug("Launching terminal: %s", terminal_cmd)
+    vim.fn.jobstart(terminal_cmd, { detach = true })
   end
+
+  -- Open URLs if configured
+  if cfg.urls and cfg.urls.auto_open_on_resume then
+    local urls = store.load_urls(slug)
+    if #urls > 0 and browser.available() then
+      browser.open_urls(urls)
+      log.debug("Opened %d URL(s) on resume", #urls)
+    end
+  end
+
+  -- Load nvim state
+  nvim.load_state(slug)
 
   log.info("Focus resumed: %s", slug)
   return true, nil
@@ -565,6 +604,129 @@ function M.list_urls(slug)
   end
 
   return store.load_urls(slug), nil
+end
+
+--- Repair/reconcile focus state with actual system state
+--- Useful after a crash or power cycle
+---@param opts? { dry_run: boolean }
+---@return table results Report of what was fixed
+function M.repair(opts)
+  opts = opts or {}
+  local dry_run = opts.dry_run or false
+
+  local results = {
+    checked = 0,
+    fixed = 0,
+    issues = {},
+  }
+
+  local cfg = config.get()
+  local focuses = store.list_all()
+
+  for _, focus in ipairs(focuses) do
+    results.checked = results.checked + 1
+
+    if focus.state == "active" then
+      local issues_found = {}
+
+      -- Check if workspace exists
+      if focus.workspace_num and i3.available() then
+        if not i3.workspace_exists(focus.workspace_num) then
+          table.insert(issues_found, "workspace " .. focus.workspace_num .. " does not exist")
+        end
+      end
+
+      -- Check if tmux session exists
+      if cfg.tmux.enabled and tmux.available() then
+        local session = tmux.session_name(focus.slug)
+        if not tmux.session_exists(session) then
+          table.insert(issues_found, "tmux session '" .. session .. "' does not exist")
+        end
+      end
+
+      -- If issues found, fix them
+      if #issues_found > 0 then
+        table.insert(results.issues, {
+          slug = focus.slug,
+          name = focus.name,
+          problems = issues_found,
+        })
+
+        if not dry_run then
+          -- Reset focus to suspended state, clear stale workspace info
+          focus.state = "suspended"
+          focus.workspace_num = nil
+          focus.workspace_name = nil
+          focus.parked_containers = nil
+          focus.tmux_session = nil
+
+          local ok, err = store.save(focus)
+          if ok then
+            results.fixed = results.fixed + 1
+            log.info("Repaired focus: %s (reset to suspended)", focus.slug)
+          else
+            log.error("Failed to repair focus %s: %s", focus.slug, err)
+          end
+        end
+      end
+    end
+  end
+
+  return results
+end
+
+--- Get status of all focuses including their actual resource state
+---@return table[] status_list
+function M.health_check()
+  local cfg = config.get()
+  local focuses = store.list_all()
+  local status_list = {}
+
+  for _, focus in ipairs(focuses) do
+    local status = {
+      slug = focus.slug,
+      name = focus.name,
+      state = focus.state,
+      workspace_num = focus.workspace_num,
+      workspace_name = focus.workspace_name,
+      workspace_exists = false,
+      tmux_session = focus.tmux_session,
+      tmux_exists = false,
+      healthy = true,
+      issues = {},
+    }
+
+    if focus.state == "active" then
+      -- Check workspace
+      if focus.workspace_num and i3.available() then
+        status.workspace_exists = i3.workspace_exists(focus.workspace_num)
+        if not status.workspace_exists then
+          status.healthy = false
+          table.insert(status.issues, "workspace missing")
+        end
+      end
+
+      -- Check tmux
+      if cfg.tmux.enabled and tmux.available() then
+        local session = tmux.session_name(focus.slug)
+        status.tmux_exists = tmux.session_exists(session)
+        if not status.tmux_exists then
+          status.healthy = false
+          table.insert(status.issues, "tmux session missing")
+        end
+      end
+    elseif focus.state == "suspended" then
+      -- Suspended focuses are healthy if they have valid metadata
+      status.healthy = true
+    elseif focus.state == "archived" then
+      -- Archived focuses are always healthy
+      status.healthy = true
+    end
+
+    table.insert(status_list, status)
+  end
+
+  return status_list
 end
 
 return M

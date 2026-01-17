@@ -49,6 +49,8 @@ Run `:checkhealth fsm` to verify your setup.
     { "<leader>Fr", "<cmd>FocusResume<cr>", desc = "Resume focus" },
     { "<leader>Fl", "<cmd>FocusList<cr>", desc = "List focuses" },
     { "<leader>Fi", "<cmd>FocusStatus<cr>", desc = "Focus info/status" },
+    { "<leader>Fh", "<cmd>FocusHealth<cr>", desc = "Focus health check" },
+    { "<leader>FR", "<cmd>FocusRepair<cr>", desc = "Repair focuses" },
     { "<leader>Fn", "<cmd>FocusNotes<cr>", desc = "Open focus notes" },
     { "<leader>Ft", "<cmd>FocusTodo<cr>", desc = "Open focus todo" },
     { "<leader>Fu", "<cmd>FocusUrls<cr>", desc = "Open focus URLs" },
@@ -97,6 +99,7 @@ require("fsm").setup({
   tmux = {
     enabled = true,
     session_prefix = "focus/",  -- tmux sessions named "focus/<slug>"
+    track_cwd = true,           -- Track and restore working directory
   },
 
   -- Notes configuration
@@ -136,6 +139,8 @@ All commands that require a focus will show a picker if called without arguments
 | `:FocusUrls [slug]` | Open all saved URLs in browser |
 | `:FocusAddUrl [url]` | Add URL to current focus (prompts if no arg) |
 | `:FocusListUrls [slug]` | List saved URLs for focus |
+| `:FocusHealth` | Show health status of all focuses |
+| `:FocusRepair [--dry-run]` | Fix orphaned focuses after crash/reboot |
 
 ## Keymaps
 
@@ -153,6 +158,8 @@ vim.keymap.set("n", "<leader>Fr", "<cmd>FocusResume<cr>", vim.tbl_extend("force"
 -- Info and lists
 vim.keymap.set("n", "<leader>Fl", "<cmd>FocusList<cr>", vim.tbl_extend("force", opts, { desc = "List focuses" }))
 vim.keymap.set("n", "<leader>Fi", "<cmd>FocusStatus<cr>", vim.tbl_extend("force", opts, { desc = "Focus info" }))
+vim.keymap.set("n", "<leader>Fh", "<cmd>FocusHealth<cr>", vim.tbl_extend("force", opts, { desc = "Focus health" }))
+vim.keymap.set("n", "<leader>FR", "<cmd>FocusRepair<cr>", vim.tbl_extend("force", opts, { desc = "Repair focuses" }))
 
 -- Focus files
 vim.keymap.set("n", "<leader>Fn", "<cmd>FocusNotes<cr>", vim.tbl_extend("force", opts, { desc = "Focus notes" }))
@@ -177,6 +184,8 @@ require("which-key").register({
     r = { "<cmd>FocusResume<cr>", "Resume focus" },
     l = { "<cmd>FocusList<cr>", "List focuses" },
     i = { "<cmd>FocusStatus<cr>", "Focus info" },
+    h = { "<cmd>FocusHealth<cr>", "Focus health" },
+    R = { "<cmd>FocusRepair<cr>", "Repair focuses" },
     n = { "<cmd>FocusNotes<cr>", "Focus notes" },
     t = { "<cmd>FocusTodo<cr>", "Focus todo" },
     u = { "<cmd>FocusUrls<cr>", "Open URLs" },
@@ -397,6 +406,35 @@ require("fsm").setup({
 })
 ```
 
+### Working Directory Tracking
+
+When `track_cwd` is enabled (default), FSM will:
+- Capture the current tmux pane's working directory when suspending a focus
+- Restore that directory when resuming the focus
+- Use the current Neovim working directory when starting a new focus
+
+This ensures you return to the exact location you were working in:
+
+```lua
+require("fsm").setup({
+  tmux = {
+    track_cwd = true,  -- Enable directory tracking (default)
+  },
+})
+```
+
+Example workflow:
+1. Start a focus: `cd ~/projects/api && nvim` → `:FocusStart API Work`
+2. Navigate somewhere: `cd src/handlers`
+3. Suspend the focus: `:FocusSuspend`
+4. Resume later: `:FocusResume api-work`
+5. Your tmux session opens in `~/projects/api/src/handlers` ✓
+
+To disable this feature:
+```lua
+tmux = { track_cwd = false }
+```
+
 ## Tips
 
 - **Naming**: Use descriptive names like "incident-rds-outage" or "feature-user-auth" - they become slugs and tmux session names
@@ -444,6 +482,33 @@ If keyboard shortcuts like `<leader>fs` (suspend) aren't showing the picker, ens
 
 - `:FocusSuspend` - Shows picker
 - `:FocusSuspend my-focus` - Suspends specific focus directly
+
+### After Crash/Reboot
+
+After a crash or reboot, your focuses may be in an inconsistent state - marked as "active" but with missing workspaces and tmux sessions. Use these commands to diagnose and fix:
+
+```vim
+" Check health of all focuses
+:FocusHealth
+
+" Preview what would be fixed (dry run)
+:FocusRepair --dry-run
+
+" Fix orphaned focuses (resets them to suspended state)
+:FocusRepair
+```
+
+After repair, you can resume your focuses normally with `:FocusResume`.
+
+### Cannot Create Focus (Name Conflict)
+
+If you get "Focus already exists" but can't find it, the focus directory may exist without proper metadata. Check:
+
+```bash
+ls ~/.local/share/focus/foci/
+```
+
+You can manually delete orphaned directories or use `:FocusDelete` with `force = true` via the Lua API.
 
 ## Utility Scripts
 
