@@ -55,6 +55,7 @@ Run `:checkhealth fsm` to verify your setup.
     { "<leader>Ft", "<cmd>FocusTodo<cr>", desc = "Open focus todo" },
     { "<leader>Fu", "<cmd>FocusUrls<cr>", desc = "Open focus URLs" },
     { "<leader>FU", "<cmd>FocusAddUrl<cr>", desc = "Add URL to focus" },
+    { "<leader>FL", "<cmd>FocusListUrls<cr>", desc = "List focus URLs" },
     { "<leader>Fa", "<cmd>FocusArchive<cr>", desc = "Archive focus" },
     { "<leader>Fd", "<cmd>FocusDelete<cr>", desc = "Delete archived focus" },
   },
@@ -166,6 +167,7 @@ vim.keymap.set("n", "<leader>Fn", "<cmd>FocusNotes<cr>", vim.tbl_extend("force",
 vim.keymap.set("n", "<leader>Ft", "<cmd>FocusTodo<cr>", vim.tbl_extend("force", opts, { desc = "Focus todo" }))
 vim.keymap.set("n", "<leader>Fu", "<cmd>FocusUrls<cr>", vim.tbl_extend("force", opts, { desc = "Open focus URLs" }))
 vim.keymap.set("n", "<leader>FU", "<cmd>FocusAddUrl<cr>", vim.tbl_extend("force", opts, { desc = "Add URL to focus" }))
+vim.keymap.set("n", "<leader>FL", "<cmd>FocusListUrls<cr>", vim.tbl_extend("force", opts, { desc = "List focus URLs" }))
 
 -- Lifecycle
 vim.keymap.set("n", "<leader>Fa", "<cmd>FocusArchive<cr>", vim.tbl_extend("force", opts, { desc = "Archive focus" }))
@@ -190,6 +192,7 @@ require("which-key").register({
     t = { "<cmd>FocusTodo<cr>", "Focus todo" },
     u = { "<cmd>FocusUrls<cr>", "Open URLs" },
     U = { "<cmd>FocusAddUrl<cr>", "Add URL" },
+    L = { "<cmd>FocusListUrls<cr>", "List URLs" },
     a = { "<cmd>FocusArchive<cr>", "Archive focus" },
     d = { "<cmd>FocusDelete<cr>", "Delete focus" },
   },
