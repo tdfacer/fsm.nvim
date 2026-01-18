@@ -146,7 +146,8 @@ function M.suspend(slug)
 
   if i3.available() and focus.workspace_name then
     -- Mark all current windows before parking (ensures new windows since start are marked)
-    i3.mark_focus_windows(slug)
+    -- Pass the focus workspace name to mark the right workspace, not the focused one
+    i3.mark_focus_windows(slug, focus.workspace_name)
 
     -- Save marks
     i3.save_marks(slug)
@@ -246,15 +247,25 @@ function M.resume(slug)
       i3.goto_workspace(focus.workspace_name)
 
       -- Still need to unpark any parked windows!
-      local unparked = i3.unpark_by_mark(slug, focus.workspace_name)
-      if unparked > 0 then
-        log.info("Unparked %d windows for focus %s", unparked, slug)
+      local unpark_result = i3.unpark_by_mark(slug, focus.workspace_name)
+      if unpark_result.total > 0 then
+        log.info("Unparked %d windows for focus %s (terminals: %d)",
+          unpark_result.total, slug, unpark_result.terminals)
       end
       focus.parked_containers = nil
 
       -- Ensure tmux session exists
       if cfg.tmux.enabled and tmux.available() then
         tmux.ensure_session(slug, focus.cwd)
+
+        -- Only spawn a new terminal if we didn't unpark one
+        if unpark_result.terminals == 0 then
+          local terminal_cmd = tmux.get_terminal_command(slug, focus.cwd, nil)
+          log.debug("Launching terminal (none unparked): %s", terminal_cmd)
+          vim.fn.jobstart(terminal_cmd, { detach = true })
+        else
+          log.debug("Skipping terminal launch - unparked %d terminal(s)", unpark_result.terminals)
+        end
       end
 
       -- Update state
@@ -294,14 +305,20 @@ function M.resume(slug)
   end
 
   -- Unpark windows - prefer mark-based (robust) over container IDs (fragile)
+  local unpark_result = { total = 0, terminals = 0, browsers = 0 }
   if i3.available() and focus.workspace_name then
     -- First try mark-based unparking (survives restarts, ID changes)
-    local unparked = i3.unpark_by_mark(focus.slug, focus.workspace_name)
+    unpark_result = i3.unpark_by_mark(focus.slug, focus.workspace_name)
 
     -- Fall back to container IDs if no marks found but we have stored IDs
-    if unparked == 0 and focus.parked_containers and #focus.parked_containers > 0 then
+    if unpark_result.total == 0 and focus.parked_containers and #focus.parked_containers > 0 then
       log.debug("No marked windows found, trying stored container IDs")
       i3.unpark_windows(focus.parked_containers, focus.workspace_name)
+    end
+
+    if unpark_result.total > 0 then
+      log.info("Unparked %d windows for focus %s (terminals: %d)",
+        unpark_result.total, slug, unpark_result.terminals)
     end
 
     focus.parked_containers = nil
@@ -323,7 +340,6 @@ function M.resume(slug)
   -- Ensure tmux session exists and launch terminal
   if cfg.tmux.enabled and tmux.available() then
     local session = tmux.session_name(slug)
-    local session_created = false
 
     if not tmux.session_exists(session) then
       -- Determine initial command (nvim with notes if auto_open)
@@ -337,16 +353,19 @@ function M.resume(slug)
       if tmux_ok then
         focus.tmux_session = session
         store.save(focus)
-        session_created = true
       else
         log.warn("Failed to create tmux session: %s", tmux_err)
       end
     end
 
-    -- Launch terminal attached to tmux session
-    local terminal_cmd = tmux.get_terminal_command(slug, focus.cwd, nil)
-    log.debug("Launching terminal: %s", terminal_cmd)
-    vim.fn.jobstart(terminal_cmd, { detach = true })
+    -- Only launch terminal if we didn't unpark one
+    if unpark_result.terminals == 0 then
+      local terminal_cmd = tmux.get_terminal_command(slug, focus.cwd, nil)
+      log.debug("Launching terminal (none unparked): %s", terminal_cmd)
+      vim.fn.jobstart(terminal_cmd, { detach = true })
+    else
+      log.debug("Skipping terminal launch - unparked %d terminal(s)", unpark_result.terminals)
+    end
   end
 
   -- Open URLs if configured

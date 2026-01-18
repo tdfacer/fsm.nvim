@@ -177,6 +177,7 @@ function M.mark_window(con_id, mark)
       log.debug("i3 mark failed for container %d: %s", con_id, i3_err)
       return false, i3_err
     end
+    log.debug("i3 mark response for container %d: %s", con_id, vim.inspect(result))
   end
 
   return true, nil
@@ -350,48 +351,75 @@ end
 
 --- Unpark windows by focus mark (more robust than container IDs)
 --- Finds all windows on parking workspace with focus:{slug} mark and moves them
+--- Also identifies FSM terminals by their instance pattern as fallback
 ---@param slug string Focus slug
 ---@param workspace_name string Target workspace
----@return number unparked Number of windows unparked
+---@return table result { total: number, terminals: number, browsers: number }
 function M.unpark_by_mark(slug, workspace_name)
   local cfg = config.get()
   local parking_ws = tostring(cfg.parking_workspace)
 
   -- Find all containers on parking workspace
   local parked = M.find_on_workspace(parking_ws)
-  local unparked = 0
+  local result = { total = 0, terminals = 0, browsers = 0 }
 
   log.debug("Looking for parked windows on workspace '%s', found %d containers", parking_ws, #parked)
 
   local focus_mark = "focus:" .. slug
+  local terminal_class = "focus-" .. slug  -- FSM terminals have this class (alacritty --class sets it)
 
   for _, container in ipairs(parked) do
-    log.debug("Container %d (%s) has marks: %s", container.id, container.class or "unknown", vim.inspect(container.marks))
+    log.debug("Container %d (class=%s, instance=%s) has marks: %s",
+      container.id, container.class or "nil", container.instance or "nil", vim.inspect(container.marks))
+
+    local should_unpark = false
+    local reason = ""
+    local is_terminal = false
 
     -- Check if this container has our focus mark
-    local has_mark = false
     if container.marks then
       for _, mark in ipairs(container.marks) do
         if mark == focus_mark then
-          has_mark = true
+          should_unpark = true
+          reason = "focus mark"
           break
         end
       end
     end
 
-    if has_mark then
+    -- Fallback: check if this is our FSM terminal by class
+    -- (alacritty --class "focus-slug,Alacritty" sets class to focus-slug)
+    if not should_unpark and container.class == terminal_class then
+      should_unpark = true
+      reason = "terminal class"
+      is_terminal = true
+      log.debug("Container %d identified as FSM terminal by class '%s'", container.id, terminal_class)
+    end
+
+    -- Also check if it's a terminal by class pattern (even if found by mark)
+    if container.class == terminal_class then
+      is_terminal = true
+    end
+
+    if should_unpark then
       local ok, err = M.move_to_workspace(container.id, workspace_name)
       if ok then
-        unparked = unparked + 1
-        log.debug("Unparked container %d (mark: %s) to %s", container.id, focus_mark, workspace_name)
+        result.total = result.total + 1
+        if is_terminal then
+          result.terminals = result.terminals + 1
+        else
+          result.browsers = result.browsers + 1
+        end
+        log.debug("Unparked container %d (%s) to %s", container.id, reason, workspace_name)
       else
         log.warn("Failed to unpark container %d: %s", container.id, err)
       end
     end
   end
 
-  log.debug("Unparked %d windows for focus %s", unparked, slug)
-  return unparked
+  log.debug("Unparked %d windows for focus %s (terminals: %d, browsers: %d)",
+    result.total, slug, result.terminals, result.browsers)
+  return result
 end
 
 --- Capture layout of current workspace
@@ -412,32 +440,37 @@ function M.capture_layout(slug)
   return true, nil
 end
 
---- Mark all windows on current workspace with focus mark
+--- Mark all windows on a workspace with focus mark
 ---@param slug string Focus slug
+---@param workspace_name? string Workspace name (defaults to focused workspace)
 ---@return number Number of windows marked
-function M.mark_focus_windows(slug)
-  local workspaces, err = M.get_workspaces()
-  if not workspaces then
-    log.error("Failed to get workspaces: %s", err)
-    return 0
-  end
+function M.mark_focus_windows(slug, workspace_name)
+  local target_ws = workspace_name
 
-  local current_ws = nil
-  for _, ws in ipairs(workspaces) do
-    if ws.focused then
-      current_ws = ws.name
-      break
+  if not target_ws then
+    -- Fall back to focused workspace
+    local workspaces, err = M.get_workspaces()
+    if not workspaces then
+      log.error("Failed to get workspaces: %s", err)
+      return 0
+    end
+
+    for _, ws in ipairs(workspaces) do
+      if ws.focused then
+        target_ws = ws.name
+        break
+      end
     end
   end
 
-  if not current_ws then
-    log.debug("No focused workspace found")
+  if not target_ws then
+    log.debug("No workspace found for marking")
     return 0
   end
 
-  log.debug("Marking windows on workspace '%s' for focus %s", current_ws, slug)
+  log.debug("Marking windows on workspace '%s' for focus %s", target_ws, slug)
 
-  local containers = M.find_on_workspace(current_ws)
+  local containers = M.find_on_workspace(target_ws)
   local marked = 0
 
   log.debug("Found %d containers on workspace", #containers)
@@ -534,8 +567,9 @@ local function is_terminal(container)
     end
   end
 
-  -- Also detect FSM focus terminals by instance prefix
-  if instance:match("^focus%-") then
+  -- Also detect FSM focus terminals by class prefix
+  -- (alacritty --class "focus-slug,Alacritty" sets class to focus-slug)
+  if class:match("^focus%-") then
     return true
   end
 
