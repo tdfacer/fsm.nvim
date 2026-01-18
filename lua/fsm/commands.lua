@@ -145,6 +145,9 @@ function M.suspend(slug)
   end
 
   if i3.available() and focus.workspace_name then
+    -- Mark all current windows before parking (ensures new windows since start are marked)
+    i3.mark_focus_windows(slug)
+
     -- Save marks
     i3.save_marks(slug)
 
@@ -229,8 +232,15 @@ function M.resume(slug)
     local has_windows = ws_exists and #i3.get_windows_on_workspace(focus.workspace_name) > 0
 
     if ws_exists and has_windows then
-      -- Workspace exists with windows - just switch to it
+      -- Workspace exists with windows - switch to it
       i3.goto_workspace(focus.workspace_name)
+
+      -- Still need to unpark any parked windows!
+      local unparked = i3.unpark_by_mark(slug, focus.workspace_name)
+      if unparked > 0 then
+        log.info("Unparked %d windows for focus %s", unparked, slug)
+      end
+      focus.parked_containers = nil
 
       -- Ensure tmux session exists
       if cfg.tmux.enabled and tmux.available() then
@@ -273,11 +283,17 @@ function M.resume(slug)
     i3.rename_workspace(focus.workspace_name)
   end
 
-  -- Unpark windows (only if they still exist)
-  if focus.parked_containers and #focus.parked_containers > 0 and i3.available() then
-    if focus.workspace_name then
+  -- Unpark windows - prefer mark-based (robust) over container IDs (fragile)
+  if i3.available() and focus.workspace_name then
+    -- First try mark-based unparking (survives restarts, ID changes)
+    local unparked = i3.unpark_by_mark(focus.slug, focus.workspace_name)
+
+    -- Fall back to container IDs if no marks found but we have stored IDs
+    if unparked == 0 and focus.parked_containers and #focus.parked_containers > 0 then
+      log.debug("No marked windows found, trying stored container IDs")
       i3.unpark_windows(focus.parked_containers, focus.workspace_name)
     end
+
     focus.parked_containers = nil
   end
 

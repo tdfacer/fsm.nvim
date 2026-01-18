@@ -320,7 +320,7 @@ function M.park_windows(containers)
   return parked
 end
 
---- Unpark windows from parking workspace
+--- Unpark windows from parking workspace by container ID
 ---@param container_ids number[]
 ---@param workspace_name string Target workspace
 ---@return boolean ok
@@ -336,6 +336,52 @@ function M.unpark_windows(container_ids, workspace_name)
     end
   end
   return success
+end
+
+--- Unpark windows by focus mark (more robust than container IDs)
+--- Finds all windows on parking workspace with focus:{slug} mark and moves them
+---@param slug string Focus slug
+---@param workspace_name string Target workspace
+---@return number unparked Number of windows unparked
+function M.unpark_by_mark(slug, workspace_name)
+  local cfg = config.get()
+  local parking_ws = tostring(cfg.parking_workspace)
+
+  -- Find all containers on parking workspace
+  local parked = M.find_on_workspace(parking_ws)
+  local unparked = 0
+
+  log.debug("Looking for parked windows on workspace '%s', found %d containers", parking_ws, #parked)
+
+  local focus_mark = "focus:" .. slug
+
+  for _, container in ipairs(parked) do
+    log.debug("Container %d (%s) has marks: %s", container.id, container.class or "unknown", vim.inspect(container.marks))
+
+    -- Check if this container has our focus mark
+    local has_mark = false
+    if container.marks then
+      for _, mark in ipairs(container.marks) do
+        if mark == focus_mark then
+          has_mark = true
+          break
+        end
+      end
+    end
+
+    if has_mark then
+      local ok, err = M.move_to_workspace(container.id, workspace_name)
+      if ok then
+        unparked = unparked + 1
+        log.debug("Unparked container %d (mark: %s) to %s", container.id, focus_mark, workspace_name)
+      else
+        log.warn("Failed to unpark container %d: %s", container.id, err)
+      end
+    end
+  end
+
+  log.debug("Unparked %d windows for focus %s", unparked, slug)
+  return unparked
 end
 
 --- Capture layout of current workspace
@@ -375,18 +421,26 @@ function M.mark_focus_windows(slug)
   end
 
   if not current_ws then
+    log.debug("No focused workspace found")
     return 0
   end
+
+  log.debug("Marking windows on workspace '%s' for focus %s", current_ws, slug)
 
   local containers = M.find_on_workspace(current_ws)
   local marked = 0
 
+  log.debug("Found %d containers on workspace", #containers)
+
   for _, container in ipairs(containers) do
     -- Add focus mark
     local focus_mark = "focus:" .. slug
+    log.debug("Marking container %d (%s) with '%s'", container.id, container.class or "unknown", focus_mark)
     local ok = M.mark_window(container.id, focus_mark)
     if ok then
       marked = marked + 1
+    else
+      log.warn("Failed to mark container %d", container.id)
     end
 
     -- Add role mark based on window class
