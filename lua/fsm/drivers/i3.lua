@@ -427,6 +427,51 @@ function M.save_marks(slug)
   return utils.write_file(path, content)
 end
 
+--- Get all windows on a workspace (excluding docks, etc.)
+---@param workspace_name? string Workspace name (defaults to focused workspace)
+---@return table[] Window containers
+function M.get_windows_on_workspace(workspace_name)
+  if not workspace_name then
+    local workspaces, err = M.get_workspaces()
+    if not workspaces then
+      return {}
+    end
+    for _, ws in ipairs(workspaces) do
+      if ws.focused then
+        workspace_name = ws.name
+        break
+      end
+    end
+    if not workspace_name then
+      return {}
+    end
+  end
+
+  return M.find_on_workspace(workspace_name)
+end
+
+--- Get terminals on a workspace
+---@param workspace_name? string Workspace name (defaults to focused workspace)
+---@return table[] Terminal containers
+function M.get_terminals_on_workspace(workspace_name)
+  local containers = M.get_windows_on_workspace(workspace_name)
+  local terminals = {}
+
+  for _, container in ipairs(containers) do
+    if container.class then
+      local class = container.class:lower()
+      -- Common terminal emulators
+      if class:match("alacritty") or class:match("kitty") or class:match("term")
+         or class:match("konsole") or class:match("gnome%-terminal") or class:match("xterm")
+         or class:match("urxvt") or class:match("st%-") or class:match("wezterm") then
+        table.insert(terminals, container)
+      end
+    end
+  end
+
+  return terminals
+end
+
 --- Get browsers on a workspace
 ---@param workspace_name? string Workspace name (defaults to focused workspace)
 ---@return table[] Browser containers

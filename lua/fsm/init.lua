@@ -120,6 +120,15 @@ function M.edit_urls(slug)
   return commands.edit_urls(slug)
 end
 
+--- Add a quick note without opening the file
+---@param message string Note message
+---@param slug? string Focus slug (defaults to current)
+---@return boolean ok
+---@return string? error
+function M.quick_note(message, slug)
+  return commands.quick_note(message, slug)
+end
+
 --- Add URLs to focus
 ---@param urls string[]
 ---@param slug? string

@@ -53,6 +53,7 @@ Run `:checkhealth fsm` to verify your setup.
     { "<leader>FR", "<cmd>FocusRepair<cr>", desc = "Repair focuses" },
     { "<leader>Fn", "<cmd>FocusNotes<cr>", desc = "Open focus notes" },
     { "<leader>Ft", "<cmd>FocusTodo<cr>", desc = "Open focus todo" },
+    { "<leader>FN", "<cmd>FocusQuickNote<cr>", desc = "Quick note" },
     { "<leader>Fu", "<cmd>FocusUrls<cr>", desc = "Open focus URLs" },
     { "<leader>FU", "<cmd>FocusAddUrl<cr>", desc = "Add URL to focus" },
     { "<leader>FL", "<cmd>FocusListUrls<cr>", desc = "List focus URLs" },
@@ -138,6 +139,7 @@ All commands that require a focus will show a picker if called without arguments
 | `:FocusDelete [slug]` | Permanently delete archived focus (picker if no arg) |
 | `:FocusNotes [slug]` | Open notes.md for focus |
 | `:FocusTodo [slug]` | Open todo.md for focus |
+| `:FocusQuickNote [msg]` | Append timestamped note without opening file |
 | `:FocusUrls [slug]` | Open all saved URLs in browser |
 | `:FocusAddUrl [url]` | Add URL to current focus (prompts if no arg) |
 | `:FocusListUrls [slug]` | List saved URLs for focus |
@@ -167,6 +169,7 @@ vim.keymap.set("n", "<leader>FR", "<cmd>FocusRepair<cr>", vim.tbl_extend("force"
 -- Focus files
 vim.keymap.set("n", "<leader>Fn", "<cmd>FocusNotes<cr>", vim.tbl_extend("force", opts, { desc = "Focus notes" }))
 vim.keymap.set("n", "<leader>Ft", "<cmd>FocusTodo<cr>", vim.tbl_extend("force", opts, { desc = "Focus todo" }))
+vim.keymap.set("n", "<leader>FN", "<cmd>FocusQuickNote<cr>", vim.tbl_extend("force", opts, { desc = "Quick note" }))
 vim.keymap.set("n", "<leader>Fu", "<cmd>FocusUrls<cr>", vim.tbl_extend("force", opts, { desc = "Open focus URLs" }))
 vim.keymap.set("n", "<leader>FU", "<cmd>FocusAddUrl<cr>", vim.tbl_extend("force", opts, { desc = "Add URL to focus" }))
 vim.keymap.set("n", "<leader>FL", "<cmd>FocusListUrls<cr>", vim.tbl_extend("force", opts, { desc = "List focus URLs" }))
@@ -193,6 +196,7 @@ require("which-key").register({
     R = { "<cmd>FocusRepair<cr>", "Repair focuses" },
     n = { "<cmd>FocusNotes<cr>", "Focus notes" },
     t = { "<cmd>FocusTodo<cr>", "Focus todo" },
+    N = { "<cmd>FocusQuickNote<cr>", "Quick note" },
     u = { "<cmd>FocusUrls<cr>", "Open URLs" },
     U = { "<cmd>FocusAddUrl<cr>", "Add URL" },
     L = { "<cmd>FocusListUrls<cr>", "List URLs" },

@@ -144,24 +144,47 @@ function M.suspend(slug)
     end
   end
 
-  if i3.available() then
+  if i3.available() and focus.workspace_name then
     -- Save marks
     i3.save_marks(slug)
 
-    -- Get browsers to park from the focus's workspace
-    if cfg.suspend_policy.browsers == "park" and focus.workspace_name then
+    -- Handle browsers based on policy
+    if cfg.suspend_policy.browsers == "park" then
       local browsers = i3.get_browsers_on_workspace(focus.workspace_name)
       if #browsers > 0 then
-        parked_ids = i3.park_windows(browsers)
-        log.debug("Parked %d browser windows", #parked_ids)
+        local parked = i3.park_windows(browsers)
+        for _, id in ipairs(parked) do
+          table.insert(parked_ids, id)
+        end
+        log.debug("Parked %d browser windows", #browsers)
       end
+    end
+
+    -- Handle terminals based on policy
+    if cfg.suspend_policy.terminals == "park" then
+      local terminals = i3.get_terminals_on_workspace(focus.workspace_name)
+      if #terminals > 0 then
+        local parked = i3.park_windows(terminals)
+        for _, id in ipairs(parked) do
+          table.insert(parked_ids, id)
+        end
+        log.debug("Parked %d terminal windows", #terminals)
+      end
+    end
+
+    -- If we parked everything, release the workspace number so it can be reused
+    local remaining = i3.get_windows_on_workspace(focus.workspace_name)
+    if #remaining == 0 then
+      log.debug("All windows parked, releasing workspace %d", focus.workspace_num)
+      focus.workspace_num = nil
+      focus.workspace_name = nil
     end
   end
 
   -- Update focus state
   focus.state = "suspended"
   focus.suspended_at = require("fsm.utils").timestamp()
-  focus.parked_containers = parked_ids
+  focus.parked_containers = #parked_ids > 0 and parked_ids or nil
 
   local ok, save_err = store.save(focus)
   if not ok then
@@ -199,42 +222,48 @@ function M.resume(slug)
   end
 
   local cfg = config.get()
-  local needs_full_resume = true
 
-  -- Check if this focus is truly active (workspace and tmux session exist)
-  if focus.state == "active" and focus.workspace_num then
-    local ws_exists = not i3.available() or i3.workspace_exists(focus.workspace_num)
-    local tmux_exists = not cfg.tmux.enabled or not tmux.available() or tmux.session_exists(tmux.session_name(slug))
+  -- Check if this focus still has a valid workspace with windows
+  if focus.workspace_num and i3.available() then
+    local ws_exists = i3.workspace_exists(focus.workspace_num)
+    local has_windows = ws_exists and #i3.get_windows_on_workspace(focus.workspace_name) > 0
 
-    if ws_exists and tmux_exists then
-      -- Truly active - just switch to it
-      if i3.available() then
-        i3.goto_workspace(focus.workspace_name)
+    if ws_exists and has_windows then
+      -- Workspace exists with windows - just switch to it
+      i3.goto_workspace(focus.workspace_name)
+
+      -- Ensure tmux session exists
+      if cfg.tmux.enabled and tmux.available() then
+        tmux.ensure_session(slug, focus.cwd)
       end
+
+      -- Update state
+      focus.state = "active"
+      focus.resumed_at = require("fsm.utils").timestamp()
+      store.save(focus)
+
       state.set_current(slug)
       nvim.set_focus_context(focus)
-      log.info("Switched to active focus: %s", slug)
+      log.info("Switched to existing workspace for focus: %s", slug)
       return true, nil
     else
-      -- Resources are gone (e.g., after reboot) - need full resume
-      log.info("Focus %s marked active but resources missing, performing full resume", slug)
-      -- Clear stale workspace allocation so we get a fresh one
+      -- Workspace is gone or empty - need full resume
+      log.info("Focus %s workspace missing or empty, performing full resume", slug)
       focus.workspace_num = nil
       focus.workspace_name = nil
-      focus.parked_containers = nil
     end
   end
 
-  -- Full resume: allocate workspace, create tmux session, launch terminal
+  -- Full resume: allocate new workspace, restore parked windows, create tmux session
 
-  -- Allocate workspace if needed
+  -- Allocate workspace
   if i3.available() then
-    local num, err = i3.alloc_workspace(cfg.workspace_range[1], cfg.workspace_range[2])
+    local num, alloc_err = i3.alloc_workspace(cfg.workspace_range[1], cfg.workspace_range[2])
     if num then
       focus.workspace_num = num
       focus.workspace_name = string.format("%d:FOCUS-%s", num, focus.slug)
     else
-      log.warn("Could not allocate workspace: %s", err)
+      log.warn("Could not allocate workspace: %s", alloc_err)
     end
   end
 
@@ -509,6 +538,41 @@ function M.edit_urls(slug)
 
   local path = store.urls_path(slug)
   vim.cmd("edit " .. vim.fn.fnameescape(path))
+  return true, nil
+end
+
+--- Add a quick note to focus without opening the file
+---@param message string Note message
+---@param slug? string Focus slug (defaults to current)
+---@return boolean ok
+---@return string? error
+function M.quick_note(message, slug)
+  slug = slug or state.current_slug()
+  if not slug then
+    return false, "No focus specified"
+  end
+
+  if not message or message == "" then
+    return false, "Note message required"
+  end
+
+  if not store.exists(slug) then
+    return false, "Focus not found: " .. slug
+  end
+
+  local path = store.notes_path(slug)
+  local timestamp = os.date("%Y-%m-%d %H:%M")
+  local note_line = string.format("\n- [%s] %s\n", timestamp, message)
+
+  -- Append to file
+  local file = io.open(path, "a")
+  if not file then
+    return false, "Failed to open notes file"
+  end
+  file:write(note_line)
+  file:close()
+
+  log.info("Added note to %s: %s", slug, message)
   return true, nil
 end
 

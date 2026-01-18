@@ -183,11 +183,16 @@ end
 --- List all focuses with full metadata
 ---@return FocusMeta[]
 function M.list_all()
-  local slugs = M.list()
+  local dir_names = M.list()
   local focuses = {}
-  for _, slug in ipairs(slugs) do
-    local focus = M.load(slug)
+  for _, dir_name in ipairs(dir_names) do
+    local focus = M.load(dir_name)
     if focus then
+      -- Ensure slug matches directory name (in case metadata is out of sync)
+      if focus.slug ~= dir_name then
+        log.warn("Focus slug mismatch: dir=%s, meta=%s - using dir name", dir_name, focus.slug)
+        focus.slug = dir_name
+      end
       table.insert(focuses, focus)
     end
   end

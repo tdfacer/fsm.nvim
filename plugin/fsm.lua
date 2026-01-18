@@ -318,6 +318,56 @@ local function create_commands()
     end,
   })
 
+  -- :FocusQuickNote <message>
+  vim.api.nvim_create_user_command("FocusQuickNote", function(opts)
+    local message = opts.args
+
+    local function do_quick_note(note_message, slug)
+      local ok, err = fsm.quick_note(note_message, slug)
+      if not ok then
+        vim.notify("[FSM] " .. err, vim.log.levels.ERROR)
+      else
+        vim.notify("[FSM] Note added", vim.log.levels.INFO)
+      end
+    end
+
+    -- If no message provided, prompt for it
+    if message == "" then
+      vim.ui.input({ prompt = "Quick note: " }, function(input)
+        if input and input ~= "" then
+          -- If no current focus, show picker
+          if not fsm.current() then
+            local picker = require("fsm.ui.picker")
+            picker.pick_focus(function(focus)
+              if focus then
+                do_quick_note(input, focus.slug)
+              end
+            end, { include_archived = false })
+          else
+            do_quick_note(input, nil)
+          end
+        end
+      end)
+      return
+    end
+
+    -- Message provided directly
+    if not fsm.current() then
+      local picker = require("fsm.ui.picker")
+      picker.pick_focus(function(focus)
+        if focus then
+          do_quick_note(message, focus.slug)
+        end
+      end, { include_archived = false })
+      return
+    end
+
+    do_quick_note(message, nil)
+  end, {
+    nargs = "?",
+    desc = "Add a quick note to focus",
+  })
+
   -- :FocusUrls [slug]
   vim.api.nvim_create_user_command("FocusUrls", function(opts)
     local slug = opts.args ~= "" and utils.slugify(opts.args) or nil
