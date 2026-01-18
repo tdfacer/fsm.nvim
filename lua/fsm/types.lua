@@ -20,14 +20,28 @@
 ---@field parked_metadata? table[] Metadata about parked windows for identification
 
 ---@class FocusConfig
----@field workspace_range number[] Min and max workspace numbers [10, 19]
+---@field log_level LogLevel
+---@field workspace_range number[] Min and max workspace numbers [11, 19]
 ---@field parking_workspace number Workspace for parked windows (99)
 ---@field suspend_policy SuspendPolicy How to handle windows on suspend
 ---@field apps AppConfig Application launch commands
 ---@field tmux TmuxConfig tmux configuration
 ---@field notes NotesConfig Notes configuration
+---@field urls UrlsConfig URL configuration
 ---@field redact_env_vars string[] Patterns for env vars to redact
 ---@field data_dir string Data storage directory
+
+---@class FocusConfigOpts
+---@field log_level? LogLevel
+---@field workspace_range? integer[]
+---@field parking_workspace? number
+---@field suspend_policy? SuspendPolicy
+---@field apps? AppConfig
+---@field tmux? TmuxConfig
+---@field notes? NotesConfig
+---@field urls? UrlsConfig
+---@field redact_env_vars? string[]
+---@field data_dir? string
 
 ---@class SuspendPolicy
 ---@field terminals "keep" | "park" | "close"
@@ -44,6 +58,9 @@
 
 ---@class NotesConfig
 ---@field auto_open boolean Whether to auto-open notes on focus start
+
+---@class UrlsConfig
+---@field auto_open_on_resume boolean Whether to auto-open URLs when resuming a focus
 
 ---@class DriverResult
 ---@field ok boolean Whether the operation succeeded

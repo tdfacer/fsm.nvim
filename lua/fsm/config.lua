@@ -4,7 +4,8 @@ local M = {}
 
 ---@type FocusConfig
 local defaults = {
-  workspace_range = { 10, 19 },
+  log_level = "info",
+  workspace_range = { 11, 19 },
   parking_workspace = 99,
   suspend_policy = {
     terminals = "keep",
@@ -33,7 +34,7 @@ local defaults = {
 M.config = vim.deepcopy(defaults)
 
 --- Setup configuration with user overrides
----@param opts? table
+---@param opts FocusConfigOpts
 function M.setup(opts)
   opts = opts or {}
   M.config = utils.deep_merge(defaults, opts)

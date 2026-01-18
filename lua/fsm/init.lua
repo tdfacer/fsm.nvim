@@ -7,7 +7,7 @@ local log = require("fsm.log")
 local M = {}
 
 --- Setup the plugin
----@param opts? table User configuration
+---@param opts FocusConfigOpts
 function M.setup(opts)
   config.setup(opts)
 

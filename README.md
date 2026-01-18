@@ -40,7 +40,11 @@ Run `:checkhealth fsm` to verify your setup.
 {
   "your-username/fsm.nvim",
   config = function()
-    require("fsm").setup()
+    --- @module 'fsm'
+    --- @type FocusConfigOpts
+    require("fsm").setup({
+      -- your configuration here
+    })
   end,
   keys = {
     { "<leader>Fs", "<cmd>FocusStart<cr>", desc = "Start new focus" },
