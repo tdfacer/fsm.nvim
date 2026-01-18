@@ -351,11 +351,12 @@ end
 
 --- Unpark windows by focus mark (more robust than container IDs)
 --- Finds all windows on parking workspace with focus:{slug} mark and moves them
---- Also identifies FSM terminals by their instance pattern as fallback
+--- Also identifies FSM terminals by their class pattern as fallback
 ---@param slug string Focus slug
 ---@param workspace_name string Target workspace
+---@param metadata? table[] Optional metadata about parked windows
 ---@return table result { total: number, terminals: number, browsers: number }
-function M.unpark_by_mark(slug, workspace_name)
+function M.unpark_by_mark(slug, workspace_name, metadata)
   local cfg = config.get()
   local parking_ws = tostring(cfg.parking_workspace)
 
@@ -387,13 +388,36 @@ function M.unpark_by_mark(slug, workspace_name)
       end
     end
 
-    -- Fallback: check if this is our FSM terminal by class
+    -- Fallback 1: check if this is our FSM terminal by class
     -- (alacritty --class "focus-slug,Alacritty" sets class to focus-slug)
     if not should_unpark and container.class == terminal_class then
       should_unpark = true
       reason = "terminal class"
       is_terminal = true
       log.debug("Container %d identified as FSM terminal by class '%s'", container.id, terminal_class)
+    end
+
+    -- Fallback 2: use stored metadata to identify windows
+    if not should_unpark and metadata then
+      for _, meta in ipairs(metadata) do
+        if container.class == meta.class and container.instance == meta.instance then
+          should_unpark = true
+          reason = "metadata match"
+          log.debug("Container %d identified by metadata (class=%s, instance=%s)",
+            container.id, meta.class, meta.instance)
+
+          -- Check if this was marked as a terminal in metadata
+          if meta.marks then
+            for _, mark in ipairs(meta.marks) do
+              if mark == "role:terminal" then
+                is_terminal = true
+                break
+              end
+            end
+          end
+          break
+        end
+      end
     end
 
     -- Also check if it's a terminal by class pattern (even if found by mark)
@@ -420,6 +444,35 @@ function M.unpark_by_mark(slug, workspace_name)
   log.debug("Unparked %d windows for focus %s (terminals: %d, browsers: %d)",
     result.total, slug, result.terminals, result.browsers)
   return result
+end
+
+--- Check if a container is a terminal
+---@param container table Container info
+---@return boolean
+local function is_terminal(container)
+  -- Check both class and instance for terminal patterns
+  local class = container.class and container.class:lower() or ""
+  local instance = container.instance and container.instance:lower() or ""
+
+  -- Common terminal emulators (check both class and instance)
+  local terminal_patterns = {
+    "alacritty", "kitty", "term", "konsole", "gnome%-terminal",
+    "xterm", "urxvt", "st%-256color", "wezterm", "foot"
+  }
+
+  for _, pattern in ipairs(terminal_patterns) do
+    if class:match(pattern) or instance:match(pattern) then
+      return true
+    end
+  end
+
+  -- Also detect FSM focus terminals by class prefix
+  -- (alacritty --class "focus-slug,Alacritty" sets class to focus-slug)
+  if class:match("^focus%-") then
+    return true
+  end
+
+  return false
 end
 
 --- Capture layout of current workspace
@@ -488,11 +541,11 @@ function M.mark_focus_windows(slug, workspace_name)
 
     -- Add role mark based on window class
     local role = "other"
-    if container.class then
+    if is_terminal(container) then
+      role = "terminal"
+    elseif container.class then
       local class = container.class:lower()
-      if class:match("alacritty") or class:match("terminal") then
-        role = "terminal"
-      elseif class:match("firefox") or class:match("chromium") or class:match("browser") then
+      if class:match("firefox") or class:match("chromium") or class:match("browser") then
         role = "browser"
       end
     end
@@ -545,35 +598,6 @@ function M.get_windows_on_workspace(workspace_name)
   end
 
   return M.find_on_workspace(workspace_name)
-end
-
---- Check if a container is a terminal
----@param container table Container info
----@return boolean
-local function is_terminal(container)
-  -- Check both class and instance for terminal patterns
-  local class = container.class and container.class:lower() or ""
-  local instance = container.instance and container.instance:lower() or ""
-
-  -- Common terminal emulators (check both class and instance)
-  local terminal_patterns = {
-    "alacritty", "kitty", "term", "konsole", "gnome%-terminal",
-    "xterm", "urxvt", "st%-256color", "wezterm", "foot"
-  }
-
-  for _, pattern in ipairs(terminal_patterns) do
-    if class:match(pattern) or instance:match(pattern) then
-      return true
-    end
-  end
-
-  -- Also detect FSM focus terminals by class prefix
-  -- (alacritty --class "focus-slug,Alacritty" sets class to focus-slug)
-  if class:match("^focus%-") then
-    return true
-  end
-
-  return false
 end
 
 --- Get terminals on a workspace

@@ -152,9 +152,13 @@ function M.suspend(slug)
     -- Save marks
     i3.save_marks(slug)
 
+    -- Collect browsers and terminals for parking
+    local browsers = {}
+    local terminals = {}
+
     -- Handle browsers based on policy
     if cfg.suspend_policy.browsers == "park" then
-      local browsers = i3.get_browsers_on_workspace(focus.workspace_name)
+      browsers = i3.get_browsers_on_workspace(focus.workspace_name)
       log.debug("Found %d browsers on workspace (policy: park)", #browsers)
       for _, b in ipairs(browsers) do
         log.debug("  Browser: id=%d class=%s instance=%s", b.id, b.class or "nil", b.instance or "nil")
@@ -170,7 +174,7 @@ function M.suspend(slug)
 
     -- Handle terminals based on policy
     if cfg.suspend_policy.terminals == "park" then
-      local terminals = i3.get_terminals_on_workspace(focus.workspace_name)
+      terminals = i3.get_terminals_on_workspace(focus.workspace_name)
       log.debug("Found %d terminals on workspace (policy: park)", #terminals)
       for _, t in ipairs(terminals) do
         log.debug("  Terminal: id=%d class=%s instance=%s", t.id, t.class or "nil", t.instance or "nil")
@@ -193,12 +197,41 @@ function M.suspend(slug)
       focus.workspace_num = nil
       focus.workspace_name = nil
     end
-  end
 
-  -- Update focus state
-  focus.state = "suspended"
-  focus.suspended_at = require("fsm.utils").timestamp()
-  focus.parked_containers = #parked_ids > 0 and parked_ids or nil
+    -- Store metadata about parked windows for robust identification
+    local parked_metadata = {}
+    if #parked_ids > 0 then
+      -- Collect metadata from both browsers and terminals that were parked
+      local all_windows = {}
+      for _, b in ipairs(browsers) do
+        table.insert(all_windows, b)
+      end
+      for _, t in ipairs(terminals) do
+        table.insert(all_windows, t)
+      end
+
+      for _, window in ipairs(all_windows) do
+        -- Check if this window was actually parked
+        for _, parked_id in ipairs(parked_ids) do
+          if window.id == parked_id then
+            table.insert(parked_metadata, {
+              id = window.id,
+              class = window.class,
+              instance = window.instance,
+              marks = window.marks
+            })
+            break
+          end
+        end
+      end
+    end
+
+    -- Update focus state
+    focus.state = "suspended"
+    focus.suspended_at = require("fsm.utils").timestamp()
+    focus.parked_containers = #parked_ids > 0 and parked_ids or nil
+    focus.parked_metadata = #parked_metadata > 0 and parked_metadata or nil
+  end
 
   local ok, save_err = store.save(focus)
   if not ok then
@@ -247,12 +280,13 @@ function M.resume(slug)
       i3.goto_workspace(focus.workspace_name)
 
       -- Still need to unpark any parked windows!
-      local unpark_result = i3.unpark_by_mark(slug, focus.workspace_name)
+      local unpark_result = i3.unpark_by_mark(slug, focus.workspace_name, focus.parked_metadata)
       if unpark_result.total > 0 then
         log.info("Unparked %d windows for focus %s (terminals: %d)",
           unpark_result.total, slug, unpark_result.terminals)
       end
       focus.parked_containers = nil
+      focus.parked_metadata = nil
 
       -- Ensure tmux session exists
       if cfg.tmux.enabled and tmux.available() then
@@ -308,7 +342,7 @@ function M.resume(slug)
   local unpark_result = { total = 0, terminals = 0, browsers = 0 }
   if i3.available() and focus.workspace_name then
     -- First try mark-based unparking (survives restarts, ID changes)
-    unpark_result = i3.unpark_by_mark(focus.slug, focus.workspace_name)
+    unpark_result = i3.unpark_by_mark(focus.slug, focus.workspace_name, focus.parked_metadata)
 
     -- Fall back to container IDs if no marks found but we have stored IDs
     if unpark_result.total == 0 and focus.parked_containers and #focus.parked_containers > 0 then
@@ -322,6 +356,7 @@ function M.resume(slug)
     end
 
     focus.parked_containers = nil
+    focus.parked_metadata = nil
   end
 
   -- Update focus state

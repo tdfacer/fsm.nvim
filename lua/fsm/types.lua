@@ -17,6 +17,7 @@
 ---@field cwd? string Working directory
 ---@field tmux_session? string tmux session name
 ---@field parked_containers? number[] Container IDs parked to workspace 99
+---@field parked_metadata? table[] Metadata about parked windows for identification
 
 ---@class FocusConfig
 ---@field workspace_range number[] Min and max workspace numbers [10, 19]
