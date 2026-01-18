@@ -169,6 +169,16 @@ function M.mark_window(con_id, mark)
   if not result then
     return false, err
   end
+
+  -- Check i3's response for success
+  if type(result) == "table" and result[1] then
+    if result[1].success == false then
+      local i3_err = result[1].error or "unknown error"
+      log.debug("i3 mark failed for container %d: %s", con_id, i3_err)
+      return false, i3_err
+    end
+  end
+
   return true, nil
 end
 
@@ -504,6 +514,34 @@ function M.get_windows_on_workspace(workspace_name)
   return M.find_on_workspace(workspace_name)
 end
 
+--- Check if a container is a terminal
+---@param container table Container info
+---@return boolean
+local function is_terminal(container)
+  -- Check both class and instance for terminal patterns
+  local class = container.class and container.class:lower() or ""
+  local instance = container.instance and container.instance:lower() or ""
+
+  -- Common terminal emulators (check both class and instance)
+  local terminal_patterns = {
+    "alacritty", "kitty", "term", "konsole", "gnome%-terminal",
+    "xterm", "urxvt", "st%-256color", "wezterm", "foot"
+  }
+
+  for _, pattern in ipairs(terminal_patterns) do
+    if class:match(pattern) or instance:match(pattern) then
+      return true
+    end
+  end
+
+  -- Also detect FSM focus terminals by instance prefix
+  if instance:match("^focus%-") then
+    return true
+  end
+
+  return false
+end
+
 --- Get terminals on a workspace
 ---@param workspace_name? string Workspace name (defaults to focused workspace)
 ---@return table[] Terminal containers
@@ -512,14 +550,8 @@ function M.get_terminals_on_workspace(workspace_name)
   local terminals = {}
 
   for _, container in ipairs(containers) do
-    if container.class then
-      local class = container.class:lower()
-      -- Common terminal emulators
-      if class:match("alacritty") or class:match("kitty") or class:match("term")
-         or class:match("konsole") or class:match("gnome%-terminal") or class:match("xterm")
-         or class:match("urxvt") or class:match("st%-") or class:match("wezterm") then
-        table.insert(terminals, container)
-      end
+    if is_terminal(container) then
+      table.insert(terminals, container)
     end
   end
 

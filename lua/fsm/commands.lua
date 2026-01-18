@@ -154,25 +154,35 @@ function M.suspend(slug)
     -- Handle browsers based on policy
     if cfg.suspend_policy.browsers == "park" then
       local browsers = i3.get_browsers_on_workspace(focus.workspace_name)
+      log.debug("Found %d browsers on workspace (policy: park)", #browsers)
+      for _, b in ipairs(browsers) do
+        log.debug("  Browser: id=%d class=%s instance=%s", b.id, b.class or "nil", b.instance or "nil")
+      end
       if #browsers > 0 then
         local parked = i3.park_windows(browsers)
         for _, id in ipairs(parked) do
           table.insert(parked_ids, id)
         end
-        log.debug("Parked %d browser windows", #browsers)
+        log.debug("Parked %d browser windows", #parked)
       end
     end
 
     -- Handle terminals based on policy
     if cfg.suspend_policy.terminals == "park" then
       local terminals = i3.get_terminals_on_workspace(focus.workspace_name)
+      log.debug("Found %d terminals on workspace (policy: park)", #terminals)
+      for _, t in ipairs(terminals) do
+        log.debug("  Terminal: id=%d class=%s instance=%s", t.id, t.class or "nil", t.instance or "nil")
+      end
       if #terminals > 0 then
         local parked = i3.park_windows(terminals)
         for _, id in ipairs(parked) do
           table.insert(parked_ids, id)
         end
-        log.debug("Parked %d terminal windows", #terminals)
+        log.debug("Parked %d terminal windows", #parked)
       end
+    else
+      log.debug("Terminal policy is '%s', not parking", cfg.suspend_policy.terminals)
     end
 
     -- If we parked everything, release the workspace number so it can be reused
